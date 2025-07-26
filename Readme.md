@@ -16,6 +16,7 @@ Cada clip se enriquece con:
 * **Glosas** sincronizadas (`start`, `end`) para entrenamiento con CTC .
 * **Marcadores no‑manuales** (expresiones faciales y movimientos de cabeza) etiquetados como tareas auxiliares .
 * **Referencias deícticas** y silencios pre/post (`prev_delta`, `post_delta`) parseados con `ast.literal_eval` para modelar transiciones discursivas .
+* Los metadatos se almacenan en `meta.csv`, un archivo CSV separado por punto y coma (`;`).
 
 ---
 
