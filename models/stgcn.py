@@ -47,17 +47,21 @@ class STGCN(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d((None,1))
         self.fc = nn.Linear(128, num_class)
 
-    def forward(self, x):
+    def forward(self, x, return_features: bool = False):
+        """Propagaci\u00f3n forward con opci\u00f3n de extraer features."""
         # x shape: (N, C, T, V)
-        N,C,T,V = x.size()
-        x = x.permute(0,3,1,2).contiguous().view(N, V*C, T)
+        N, C, T, V = x.size()
+        x = x.permute(0, 3, 1, 2).contiguous().view(N, V * C, T)
         x = self.data_bn(x)
-        x = x.view(N, V, C, T).permute(0,2,3,1)
+        x = x.view(N, V, C, T).permute(0, 2, 3, 1)
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
         x = self.pool(x)  # (N, C, T, 1)
-        x = x.squeeze(-1).permute(0,2,1)  # (N, T, C)
-        x = self.fc(x)
-        return x.log_softmax(-1)
+        feat = x.squeeze(-1).permute(0, 2, 1)  # (N, T, C)
+        out = self.fc(feat)
+        log_probs = out.log_softmax(-1)
+        if return_features:
+            return log_probs, feat
+        return log_probs
