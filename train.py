@@ -8,6 +8,8 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from models.stgcn import STGCN
+from models.sttn import STTN
+from models.corrnet import CorrNetPlus
 
 class SignDataset(Dataset):
     def __init__(self, h5_path, csv_path):
@@ -76,11 +78,22 @@ def collate(batch):
     padded_labels = torch.stack(padded_labels)
     return padded_feats, padded_labels, torch.tensor(feat_lengths), torch.tensor(label_lengths)
 
+def build_model(name: str, num_classes: int) -> nn.Module:
+    """Create the selected model."""
+    if name == 'stgcn':
+        return STGCN(in_channels=3, num_class=num_classes, num_nodes=544)
+    if name == 'sttn':
+        return STTN(in_channels=3, num_class=num_classes, num_nodes=544)
+    if name == 'corrnet+':
+        return CorrNetPlus(in_channels=3, num_class=num_classes, num_nodes=544)
+    raise ValueError(f'Unknown model: {name}')
+
+
 def train(args):
     ds = SignDataset(args.h5_file, args.csv_file)
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = STGCN(in_channels=3, num_class=len(ds.vocab), num_nodes=544)
+    model = build_model(args.model, len(ds.vocab))
     model.to(device)
     criterion = nn.CTCLoss(blank=0, zero_infinity=True)
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -108,10 +121,11 @@ def train(args):
         }, f'checkpoints/epoch_{epoch+1}.pt')
 
 if __name__ == '__main__':
-    p = argparse.ArgumentParser(description='Train ST-GCN with CTC loss')
+    p = argparse.ArgumentParser(description='Train sign language models with CTC loss')
     p.add_argument('--h5_file', required=True, help='HDF5 file with landmarks and optical flow')
     p.add_argument('--csv_file', required=True, help='CSV file with transcripts')
     p.add_argument('--epochs', type=int, default=10)
     p.add_argument('--batch_size', type=int, default=4)
+    p.add_argument('--model', type=str, default='stgcn', choices=['stgcn', 'sttn', 'corrnet+'], help='Model architecture')
     args = p.parse_args()
     train(args)
