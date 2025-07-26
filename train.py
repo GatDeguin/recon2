@@ -132,12 +132,15 @@ def train(args):
                 feats, labels, feat_lens, label_lens = batch
             feats = feats.to(device)
             labels = labels.to(device)
+            feat_lens = feat_lens.to(device)
+            label_lens = label_lens.to(device)
             if args.domain_labels:
                 outputs, feats_emb = model(feats, return_features=True)
             else:
                 outputs = model(feats)
             outputs = outputs.permute(1, 0, 2)  # T,B,C
-            loss = criterion(outputs, labels, feat_lens, label_lens)
+            targets = labels.flatten()
+            loss = criterion(outputs, targets, feat_lens, label_lens)
             if args.domain_labels:
                 dom_feat = feats_emb.mean(dim=1)
                 dom_logits = disc(grad_reverse(dom_feat))
