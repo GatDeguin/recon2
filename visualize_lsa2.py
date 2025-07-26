@@ -31,7 +31,7 @@ except IOError:
 
 def visualize(video_dir, h5_path, csv_path, win_size, no_window=False):
     # Leer CSV y HDF5
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, sep=';')
     if 'id' not in df.columns:
         raise ValueError("CSV debe contener columna 'id' con el nombre base de cada vídeo.")
     if 'splits' not in df.columns and not {'video','label','start','end'}.issubset(df.columns):
