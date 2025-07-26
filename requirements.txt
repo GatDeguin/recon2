@@ -1,0 +1,14 @@
+# PyTorch GPU con CUDA 11.8
+torch==2.2.1+cu118
+torchvision==0.17.1+cu118
+torchaudio==2.2.1+cu118
+--extra-index-url https://download.pytorch.org/whl/cu118
+
+# Dependencias restantes
+mediapipe==0.10.10
+pandas
+h5py
+jiwer
+numpy==1.26.4
+opencv-python==4.8.1.78
+
