@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import torch
 import cv2
 import numpy as np
@@ -8,7 +11,15 @@ _device = 'cuda' if torch.cuda.is_available() else 'cpu'
 def _load_model():
     global _model
     if _model is None:
-        _model = torch.hub.load('princeton-vl/RAFT', 'raft', pretrained=True)
+        ckpt = os.environ.get("RAFT_CKPT")
+        if ckpt is None:
+            default_path = Path(__file__).resolve().parent.parent / "checkpoints" / "raft-sintel.pth"
+            if default_path.exists():
+                ckpt = str(default_path)
+        if ckpt is not None:
+            _model = torch.hub.load('princeton-vl/RAFT', 'raft', pretrained=False, ckpt=ckpt)
+        else:
+            _model = torch.hub.load('princeton-vl/RAFT', 'raft', pretrained=True)
         _model = _model.to(_device)
         _model.eval()
     return _model

@@ -34,6 +34,9 @@ Se aplica **YOLOX** exportado a ONNX para extraer bounding boxes de la persona f
 
 * **MediaPipe Holistic** extrae **543 landmarks** (33 pose, 2×21 manos, 468 rostro) normalizados al torso para homogeneizar escala y perspectiva .
 * **RAFT** calcula flujo óptico denso focalizado en manos, capturando movimientos sutiles que complementan los landmarks .
+  Para ejecutar sin conexión debe descargarse el peso `raft-sintel.pth` desde
+  [RAFT](https://github.com/princeton-vl/RAFT/releases) y colocarse en
+  `checkpoints/` o indicar su ruta mediante la variable de entorno `RAFT_CKPT`.
 
 ### 2.4 Construcción de Grafos Esqueléticos
 
