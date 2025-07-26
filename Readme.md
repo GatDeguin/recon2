@@ -1,0 +1,117 @@
+Readme
+---
+
+## 1. Adquisición y Anotación de Datos
+
+### 1.1 Corpora Paralelos
+
+Se parte de **LSA‑T**, un corpus continuo de LSA con 14 880 vídeos de oraciones a 30 FPS, extraídos del canal CN Sordos y anotados con glosas y keypoints .
+Se añade **LSA64**, compuesto por 3 200 clips de señas aisladas para pre‑entrenamiento controlado .
+Para robustez cross‑lingual, se incorporan **PHOENIX‑Weather‑2014T** y **CoL‑SLTD** en fases iniciales de pre‑entrenamiento .
+
+### 1.2 Esquema de Anotación Multitarea
+
+Cada clip se enriquece con:
+
+* **Glosas** sincronizadas (`start`, `end`) para entrenamiento con CTC .
+* **Marcadores no‑manuales** (expresiones faciales y movimientos de cabeza) etiquetados como tareas auxiliares .
+* **Referencias deícticas** y silencios pre/post (`prev_delta`, `post_delta`) parseados con `ast.literal_eval` para modelar transiciones discursivas .
+
+---
+
+## 2. Preprocesamiento y Extracción Multimodal
+
+### 2.1 Chunking de Vídeo
+
+Los vídeos se fragmentan en **chunks de 16–32 frames** conforme a la estrategia de STTN, reduciendo la carga de memoria y permitiendo batch‑training eficiente .
+
+### 2.2 Detección de Sujetos (ROI)
+
+Se aplica **YOLOX** exportado a ONNX para extraer bounding boxes de la persona firmante a ≥ 25 FPS, con padding dinámico para incluir manos, torso y rostro .
+
+### 2.3 Extracción de Landmarks y Flujo Óptico
+
+* **MediaPipe Holistic** extrae **543 landmarks** (33 pose, 2×21 manos, 468 rostro) normalizados al torso para homogeneizar escala y perspectiva .
+* **RAFT** calcula flujo óptico denso focalizado en manos, capturando movimientos sutiles que complementan los landmarks .
+
+### 2.4 Construcción de Grafos Esqueléticos
+
+Los landmarks se modelan como nodos de un grafo esquelético procesado por un **Spatial‑Temporal GCN**, reforzando la representación de la conectividad articular .
+
+---
+
+## 3. Arquitectura del Modelo
+
+### 3.1 Pre‑Entrenamiento Self‑Supervised (SHuBERT)
+
+Se implementa **SHuBERT**, que enmascara y predice flujos de landmarks de manos, pose y rostro para aprender representaciones robustas en \~1 000 h de vídeo .
+
+### 3.2 Spatio‑Temporal Transformer Network (STTN)
+
+El **STTN** alterna bloques de atención espacial y temporal sobre cada chunk, extrayendo características globales y locales con gran eficiencia en secuencias prolongadas .
+
+### 3.3 Multi‑Scale Channel Transformer (MCST‑Transformer)
+
+Se integran kernels de tamaño 3, 5 y 7 frames en bloques de atención multi‑escala, adaptando el campo receptivo temporal a la velocidad variable de las glosas .
+
+### 3.4 CorrNet+ para Correlación Temporal
+
+**CorrNet+** genera mapas de correlación entre frames adyacentes y aplica atención selectiva a trayectorias críticas de manos y rostro, reduciendo el ruido de jitter y la complejidad computacional .
+
+### 3.5 Cabezas Multitarea
+
+El encoder alimenta tres cabezas:
+
+1. **CTC‑head** para reconocimiento continuo de glosas.
+2. **No‑manual head** para clasificación de expresiones faciales y de cabeza.
+3. **Classifier head** para sufijos numerales y clasificadores morfológicos simultáneos .
+
+---
+
+## 4. Estrategia de Entrenamiento
+
+### 4.1 Funciones de Pérdida
+
+* **CTC Loss** alinea vídeo y glosas sin segmentación manual .
+* **Contrastive Loss** separa representaciones de clases cercanas en el espacio latente .
+* **Cross‑Entropy** auxiliar para marcadores no‑manuales y clasificadores morfológicos .
+
+### 4.2 Curriculum Learning y Augmentación
+
+Se inicia el entrenamiento con clips cortos (< 10 frames) y gradualmente se incorporan secuencias largas (> 32 frames) para estabilizar la convergencia .
+Se emplea MixUp temporal, speed perturbation y fondos sintéticos generados por GANs para robustez ante variaciones adversariales .
+
+### 4.3 Adaptación Adversarial de Dominio
+
+Se integra un **Gradient Reversal Layer** (DANN) para alinear las características entre LSA‑T y otros corpus (ASL, GSL), reduciendo el gap de dominio y mejorando la generalización .
+
+---
+
+## 5. Decodificación e Inferencia
+
+### 5.1 Beam‑Search con Transformer‑LM
+
+Durante la inferencia, un **beam‑search** acompañado de un **Transformer‑based Language Model** entrenado en glosas LSA‑T refuerza la sintaxis SOV y las estructuras topic–comment .
+
+### 5.2 Optimización y Quantización
+
+El modelo se exporta a **ONNX Runtime** y se cuantiza dinámicamente a INT8, alcanzando > 25 FPS en CPU/GPU con una pérdida de WER inferior al 1 % .
+Se genera además una versión “lite” mediante **Knowledge Distillation**, reduciendo parámetros en un 50 % con alta precisión para dispositivos móviles .
+
+---
+
+## 6. Despliegue y Monitoreo
+
+### 6.1 Backend y Servido
+
+El backend se implementa con **FastAPI** y gRPC en contenedores Docker orquestados por Kubernetes, con auto‑escalado y batching de peticiones para alta disponibilidad y latencia < 100 ms .
+
+### 6.2 Frontend en Tiempo Real
+
+Un cliente React/WebSocket captura la webcam o stream, envía chunks al servidor y superpone landmarks y transcripción en tiempo real para feedback inmediato al usuario .
+
+### 6.3 Mantenimiento y Aprendizaje Continuo
+
+Se monitorizan métricas clave (WER, precisión de RNM, latencia, FPS) y se orquesta un pipeline de **active learning** semanal con ejemplos de baja confianza capturados en producción, permitiendo reentrenamientos periódicos .
+
+---
