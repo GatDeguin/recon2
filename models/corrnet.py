@@ -24,10 +24,10 @@ class CorrNetPlus(nn.Module):
         self.corr = CorrNet(in_channels)
         self.encoder = STGCN(in_channels, num_class, num_nodes)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, return_features: bool = False) -> torch.Tensor:
         # x: (N, C, T, V)
         corr = self.corr(x)
         weights = torch.softmax(corr, dim=-1)  # (N, T, T)
         agg = torch.einsum('nts,ncsv->nctv', weights, x)
         x = x + agg
-        return self.encoder(x)
+        return self.encoder(x, return_features=return_features)

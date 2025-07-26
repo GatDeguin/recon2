@@ -46,12 +46,15 @@ class STTN(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d((None, 1))
         self.fc = nn.Linear(embed_dim, num_class)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, return_features: bool = False) -> torch.Tensor:
         # x: (N, C, T, V)
         x = self.input_proj(x)
         for layer in self.layers:
             x = layer(x)
         x = self.pool(x)  # (N, C, T, 1)
-        x = x.squeeze(-1).permute(0, 2, 1)  # (N, T, C)
-        x = self.fc(x)
-        return x.log_softmax(-1)
+        feat = x.squeeze(-1).permute(0, 2, 1)  # (N, T, C)
+        out = self.fc(feat)
+        log_probs = out.log_softmax(-1)
+        if return_features:
+            return log_probs, feat
+        return log_probs
