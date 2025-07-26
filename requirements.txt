@@ -13,3 +13,7 @@ numpy==1.26.4
 opencv-python==4.8.1.78
 git+https://github.com/princeton-vl/RAFT.git
 
+# Backend API
+fastapi
+uvicorn[standard]
+
