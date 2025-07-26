@@ -10,6 +10,7 @@ import h5py
 from tqdm import tqdm
 import mediapipe as mp
 from ultralytics import YOLO
+from optical_flow.raft_runner import compute_optical_flow
 
 
 def box_iou(a, b):
@@ -196,11 +197,13 @@ def procesar_videos(input_dir, output_file,
                 prev_boxes,prev_ids,prev_centers = cur_boxes,cur_ids,cur_centers.copy()
 
             pbar.close(); cap.release()
+            flow_seq = compute_optical_flow(os.path.join(input_dir, vid))
             grp=h5f.create_group(vid)
             grp.create_dataset('pose',data=np.stack(pose_seq),compression='gzip')
             grp.create_dataset('left_hand',data=np.stack(lh_seq),compression='gzip')
             grp.create_dataset('right_hand',data=np.stack(rh_seq),compression='gzip')
             grp.create_dataset('face',data=np.stack(face_seq),compression='gzip')
+            grp.create_dataset('optical_flow',data=flow_seq,compression='gzip')
 
     holistic.close()
     if show_window: cv2.destroyAllWindows()
