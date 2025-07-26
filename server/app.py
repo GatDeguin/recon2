@@ -8,6 +8,17 @@ import mediapipe as mp
 from ultralytics import YOLO
 from optical_flow.raft_runner import compute_optical_flow
 
+# Inicializar modelos globales una sola vez
+mp_holistic = mp.solutions.holistic
+yolo_model = YOLO("yolov8n.pt")
+holistic_model = mp_holistic.Holistic(
+    static_image_mode=False,
+    model_complexity=2,
+    smooth_landmarks=True,
+    min_detection_confidence=0.7,
+    min_tracking_confidence=0.7,
+)
+
 app = FastAPI()
 
 # Cargar modelo TorchScript u ONNX
@@ -48,16 +59,7 @@ def extract_features_from_bytes(data: bytes) -> torch.Tensor:
 
 def _extract_features(path: str) -> torch.Tensor:
     """Compute landmarks and optical flow for a video path."""
-    yolo = YOLO("yolov8n.pt")
-    mp_holistic = mp.solutions.holistic
-
-    holistic = mp_holistic.Holistic(
-        static_image_mode=False,
-        model_complexity=2,
-        smooth_landmarks=True,
-        min_detection_confidence=0.7,
-        min_tracking_confidence=0.7,
-    )
+    global yolo_model, holistic_model
 
     cap = cv2.VideoCapture(path)
     pose_seq, lh_seq, rh_seq, face_seq = [], [], [], []
@@ -65,7 +67,7 @@ def _extract_features(path: str) -> torch.Tensor:
         ret, frame = cap.read()
         if not ret:
             break
-        yres = yolo(frame, device=0 if torch.cuda.is_available() else "cpu", half=torch.cuda.is_available(), conf=0.5, classes=[0])[0]
+        yres = yolo_model(frame, device=0 if torch.cuda.is_available() else "cpu", half=torch.cuda.is_available(), conf=0.5, classes=[0])[0]
         boxes = yres.boxes.xyxy.cpu().numpy().astype(int)
         if len(boxes) == 0:
             pose_seq.append(np.zeros((33 * 3,), np.float32))
@@ -82,7 +84,7 @@ def _extract_features(path: str) -> torch.Tensor:
         except Exception:
             rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
 
-        res = holistic.process(rgb)
+        res = holistic_model.process(rgb)
 
         def lm_arr(lm, n):
             return np.array([[p.x, p.y, p.z] for p in lm.landmark], np.float32) if lm else np.zeros((n, 3), np.float32)
@@ -104,7 +106,6 @@ def _extract_features(path: str) -> torch.Tensor:
         face_seq.append(to_global(face_lm).reshape(-1))
 
     cap.release()
-    holistic.close()
 
     flow_seq = compute_optical_flow(path)
     avg_flow = flow_seq.mean(axis=(1, 2)) if flow_seq.size > 0 else np.zeros((len(pose_seq), 2), np.float32)
