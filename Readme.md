@@ -119,3 +119,16 @@ Un cliente React/WebSocket captura la webcam o stream, envía chunks al servidor
 Se monitorizan métricas clave (WER, precisión de RNM, latencia, FPS) y se orquesta un pipeline de **active learning** semanal con ejemplos de baja confianza capturados en producción, permitiendo reentrenamientos periódicos .
 
 ---
+
+## 7. Archivos Requeridos para el Servidor
+
+El servicio `server/app.py` busca un modelo TorchScript en `checkpoints/model.ts` y un archivo de vocabulario `vocab.txt`.
+Para realizar pruebas rápidas sin modelos entrenados, cree ficheros de relleno:
+
+```
+mkdir -p checkpoints
+:>checkpoints/model.ts
+printf "<unk>\n<pad>\n" > vocab.txt
+```
+
+Si dispone de los pesos reales y un vocabulario entrenado, reemplace estos archivos por los originales.
