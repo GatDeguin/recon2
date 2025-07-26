@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cliente Webcam</title>
+<style>
+  body { font-family: sans-serif; text-align: center; }
+  video { width: 320px; height: 240px; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h1>Transcripción en vivo</h1>
+<video id="preview" autoplay playsinline></video>
+<p id="text"></p>
+<script>
+(async () => {
+  const video = document.getElementById('preview');
+  const text = document.getElementById('text');
+  const stream = await navigator.mediaDevices.getUserMedia({video: true});
+  video.srcObject = stream;
+  const ws = new WebSocket('ws://' + location.hostname + ':8000/ws');
+  const recorder = new MediaRecorder(stream, {mimeType: 'video/webm'});
+  recorder.ondataavailable = ev => {
+    if (ev.data.size > 0 && ws.readyState === 1) {
+      ws.send(ev.data);
+    }
+  };
+  ws.onmessage = ev => {
+    const data = JSON.parse(ev.data);
+    text.innerText = data.transcript || '';
+  };
+  recorder.start(2000); // enviar cada 2s
+})();
+</script>
+</body>
+</html>
