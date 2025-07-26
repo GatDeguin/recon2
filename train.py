@@ -59,7 +59,12 @@ class SignDataset(Dataset):
         return x, y, domain
 
 def collate(batch):
-    """Pad secuencias y empaquetar dominios opcionalmente."""
+    """Pad secuencias y empaquetar dominios opcionalmente.
+
+    El tensor de etiquetas resultante tiene forma ``(B, L)`` y debe
+    aplanarse (`flatten`) junto con ``label_lengths`` antes de pasar a
+    ``nn.CTCLoss``.
+    """
     if len(batch[0]) == 3:
         feats, labels, domains = zip(*batch)
     else:
@@ -139,6 +144,10 @@ def train(args):
             else:
                 outputs = model(feats)
             outputs = outputs.permute(1, 0, 2)  # T,B,C
+            # nn.CTCLoss requiere que todas las etiquetas estén
+            # concatenadas en un solo vector y se pasen sus longitudes
+            # originales. No quitar flatten() ni label_lens al extender
+            # el entrenamiento.
             targets = labels.flatten()
             loss = criterion(outputs, targets, feat_lens, label_lens)
             if args.domain_labels:
