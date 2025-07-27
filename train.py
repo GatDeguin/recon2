@@ -10,6 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 from models.stgcn import STGCN
 from models.sttn import STTN
 from models.corrnet import CorrNetPlus
+from models.mcst_transformer import MCSTTransformer
 
 class SignDataset(Dataset):
     def __init__(self, h5_path, csv_path, domain_csv=None):
@@ -105,6 +106,8 @@ def build_model(name: str, num_classes: int) -> nn.Module:
         return STTN(in_channels=3, num_class=num_classes, num_nodes=544)
     if name == 'corrnet+':
         return CorrNetPlus(in_channels=3, num_class=num_classes, num_nodes=544)
+    if name == 'mcst':
+        return MCSTTransformer(in_channels=3, num_class=num_classes, num_nodes=544)
     raise ValueError(f'Unknown model: {name}')
 
 
@@ -177,7 +180,7 @@ if __name__ == '__main__':
     p.add_argument('--csv_file', required=True, help='CSV file with transcripts')
     p.add_argument('--epochs', type=int, default=10)
     p.add_argument('--batch_size', type=int, default=4)
-    p.add_argument('--model', type=str, default='stgcn', choices=['stgcn', 'sttn', 'corrnet+'], help='Model architecture')
+    p.add_argument('--model', type=str, default='stgcn', choices=['stgcn', 'sttn', 'corrnet+', 'mcst'], help='Model architecture')
     p.add_argument('--domain_labels', help='CSV con etiquetas de dominio opcional')
     args = p.parse_args()
     train(args)

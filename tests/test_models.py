@@ -19,3 +19,7 @@ def test_sttn_forward():
 
 def test_corrnet_forward():
     _run_forward("corrnet+")
+
+
+def test_mcst_forward():
+    _run_forward("mcst")
