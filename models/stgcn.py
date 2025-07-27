@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from pathlib import Path
+from utils.build_adjacency import build_adjacency
 
 class GraphConv(nn.Module):
     """Simple graph convolution using a fixed adjacency matrix."""
@@ -40,7 +42,14 @@ class STGCN(nn.Module):
                  num_suffix: int = 0):
         """Spatial Temporal GCN with optional multitask heads."""
         super().__init__()
-        A = np.eye(num_nodes, dtype=np.float32)
+        cfg_path = Path(__file__).resolve().parent.parent / "configs" / "skeleton.yaml"
+        if cfg_path.exists():
+            try:
+                A = build_adjacency(cfg_path)
+            except Exception:
+                A = np.eye(num_nodes, dtype=np.float32)
+        else:
+            A = np.eye(num_nodes, dtype=np.float32)
         self.data_bn = nn.BatchNorm1d(num_nodes * in_channels)
         self.layer1 = STGCNBlock(in_channels, 64, A)
         self.layer2 = STGCNBlock(64, 64, A)
