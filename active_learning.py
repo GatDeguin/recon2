@@ -6,6 +6,8 @@ import h5py
 import torch
 from torch.utils.data import DataLoader
 from typing import List, Tuple
+import shutil
+import pandas as pd
 
 from train import SignDataset, collate, build_model
 
@@ -41,6 +43,20 @@ def save_selected(scores: List[Tuple[str, float]], dataset: SignDataset, out_dir
     out_h5.close()
 
 
+def load_production_samples(log_file: str, top_k: int) -> List[str]:
+    """Return video paths with lowest confidence from production logs."""
+    df = pd.read_csv(log_file)
+    df = df.sort_values("confidence").head(top_k)
+    return df["video_path"].tolist()
+
+
+def copy_videos(paths: List[str], out_dir: str) -> None:
+    os.makedirs(out_dir, exist_ok=True)
+    for pth in paths:
+        if os.path.exists(pth):
+            shutil.copy2(pth, os.path.join(out_dir, os.path.basename(pth)))
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Proceso simple de active learning")
     p.add_argument("--checkpoint", required=True, help="Modelo entrenado")
@@ -48,6 +64,7 @@ def main() -> None:
     p.add_argument("--csv_file", required=True)
     p.add_argument("--out_dir", required=True)
     p.add_argument("--top_k", type=int, default=10, help="Cantidad de ejemplos a seleccionar")
+    p.add_argument("--log_file", help="CSV con registros de producción")
     args = p.parse_args()
 
     ds = SignDataset(args.h5_file, args.csv_file)
@@ -61,8 +78,12 @@ def main() -> None:
         model = ckpt
     model.eval()
 
-    scores = compute_scores(model, dl)
-    save_selected(scores, ds, args.out_dir, args.top_k)
+    if args.log_file and os.path.exists(args.log_file):
+        paths = load_production_samples(args.log_file, args.top_k)
+        copy_videos(paths, os.path.join(args.out_dir, "videos"))
+    else:
+        scores = compute_scores(model, dl)
+        save_selected(scores, ds, args.out_dir, args.top_k)
 
 
 if __name__ == "__main__":

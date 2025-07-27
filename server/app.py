@@ -7,6 +7,11 @@ import cv2
 import mediapipe as mp
 from ultralytics import YOLO
 from optical_flow.raft_runner import compute_optical_flow
+import os
+import uuid
+import time
+
+from metrics import MetricsLogger
 
 # Inicializar modelos globales una sola vez
 mp_holistic = mp.solutions.holistic
@@ -20,6 +25,16 @@ holistic_model = mp_holistic.Holistic(
 )
 
 app = FastAPI()
+
+# Base directories for logs
+os.makedirs("logs/videos", exist_ok=True)
+logger = MetricsLogger(os.path.join("logs", "metrics.db"))
+
+
+@app.on_event("shutdown")
+def _close_logger() -> None:
+    """Ensure metrics database is closed on shutdown."""
+    logger.close()
 
 # Cargar modelo TorchScript u ONNX
 try:
@@ -129,12 +144,33 @@ def _extract_features(path: str) -> torch.Tensor:
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
     data = await file.read()
+    uid = uuid.uuid4().hex
+    video_path = os.path.join("logs", "videos", f"{uid}.mp4")
+    with open(video_path, "wb") as f:
+        f.write(data)
+
+    start = time.time()
     feats = extract_features_from_bytes(data)
+    latency = time.time() - start
+    fps = feats.shape[2] / latency if latency > 0 else 0.0
+
     if model is None:
-        return {"transcript": ""}
-    with torch.no_grad():
-        logits = model(feats)
-    transcript = decode(logits)
+        transcript = ""
+        conf = 0.0
+    else:
+        with torch.no_grad():
+            logits = model(feats)
+        transcript = decode(logits)
+        conf = torch.softmax(logits, dim=-1).max(-1).values.mean().item()
+
+    logger.log(latency=latency, fps=fps)
+    log_path = os.path.join("logs", "predictions.csv")
+    header = not os.path.exists(log_path)
+    with open(log_path, "a", encoding="utf-8") as lf:
+        if header:
+            lf.write("video_path,confidence\n")
+        lf.write(f"{video_path},{conf}\n")
+
     return {"transcript": transcript}
 
 @app.websocket("/ws")
@@ -143,13 +179,19 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             data = await ws.receive_bytes()
+            start = time.time()
             feats = extract_features_from_bytes(data)
+            latency = time.time() - start
+            fps = feats.shape[2] / latency if latency > 0 else 0.0
+
             if model is None:
-                await ws.send_json({"transcript": ""})
-                continue
-            with torch.no_grad():
-                logits = model(feats)
-            transcript = decode(logits)
+                transcript = ""
+            else:
+                with torch.no_grad():
+                    logits = model(feats)
+                transcript = decode(logits)
+
+            logger.log(latency=latency, fps=fps)
             await ws.send_json({"transcript": transcript})
     except WebSocketDisconnect:
         pass
