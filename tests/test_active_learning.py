@@ -23,6 +23,11 @@ def _create_data(h5_path, csv_path):
         "nmm": ["neutral"],
         "suffix": ["none"],
         "rnm": ["tipo1"],
+        "person": ["1"],
+        "number": ["sg"],
+        "tense": ["pres"],
+        "aspect": ["simple"],
+        "mode": ["ind"],
     }).to_csv(csv_path, sep=";", index=False)
 
 

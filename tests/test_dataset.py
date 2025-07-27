@@ -19,6 +19,11 @@ def _create_data(h5_path, csv_path):
         "nmm": ["neutral"],
         "suffix": ["none"],
         "rnm": ["tipo1"],
+        "person": ["1"],
+        "number": ["sg"],
+        "tense": ["pres"],
+        "aspect": ["simple"],
+        "mode": ["ind"],
     }).to_csv(csv_path, sep=";", index=False)
 
 
@@ -28,13 +33,18 @@ def test_dataset_loading(tmp_path):
     _create_data(h5_file, csv_file)
     with SignDataset(str(h5_file), str(csv_file)) as ds:
         assert len(ds) == 1
-        x, y, d, nmm, suf, rnm = ds[0]
+        x, y, d, nmm, suf, rnm, per, num, tense, aspect, mode = ds[0]
         assert x.shape == (3, 2, 544)
         assert d == 0
         assert y.tolist() == [ds.vocab["hello"], ds.vocab["world"]]
         assert nmm == ds.nmm_vocab["neutral"]
         assert suf == ds.suffix_vocab["none"]
         assert rnm == ds.rnm_vocab["tipo1"]
+        assert per == ds.person_vocab["1"]
+        assert num == ds.number_vocab["sg"]
+        assert tense == ds.tense_vocab["pres"]
+        assert aspect == ds.aspect_vocab["simple"]
+        assert mode == ds.mode_vocab["ind"]
 
 
 def test_collate(tmp_path):
@@ -43,7 +53,21 @@ def test_collate(tmp_path):
     _create_data(h5_file, csv_file)
     with SignDataset(str(h5_file), str(csv_file)) as ds:
         batch = [ds[0], ds[0]]
-        feats, labels, feat_lens, label_lens, domains, nmms, sufs, rnms = collate(batch)
+        (
+            feats,
+            labels,
+            feat_lens,
+            label_lens,
+            domains,
+            nmms,
+            sufs,
+            rnms,
+            pers,
+            nums,
+            tenses,
+            aspects,
+            modes,
+        ) = collate(batch)
         assert feats.shape[0] == 2
         assert feat_lens.tolist() == [2, 2]
         assert label_lens.tolist() == [2, 2]
@@ -51,3 +75,8 @@ def test_collate(tmp_path):
         assert (nmms == ds.nmm_vocab["neutral"]).all()
         assert (sufs == ds.suffix_vocab["none"]).all()
         assert (rnms == ds.rnm_vocab["tipo1"]).all()
+        assert (pers == ds.person_vocab["1"]).all()
+        assert (nums == ds.number_vocab["sg"]).all()
+        assert (tenses == ds.tense_vocab["pres"]).all()
+        assert (aspects == ds.aspect_vocab["simple"]).all()
+        assert (modes == ds.mode_vocab["ind"]).all()
