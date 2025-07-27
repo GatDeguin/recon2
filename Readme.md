@@ -100,6 +100,13 @@ Durante la inferencia, un **beam‑search** acompañado de un **Transformer‑ba
 ### 5.2 Optimización y Quantización
 
 El modelo se exporta a **ONNX Runtime** y se cuantiza dinámicamente a INT8, alcanzando > 25 FPS en CPU/GPU con una pérdida de WER inferior al 1 % .
+Para ello se provee el script `export_onnx.py`:
+
+```bash
+python export_onnx.py --checkpoint ckpt.pt --arch stgcn --output model.onnx
+```
+
+Genera `model.onnx_int8.onnx` ya cuantizado y verifica una inferencia con `onnxruntime`.
 Se genera además una versión “lite” mediante **Knowledge Distillation**, reduciendo parámetros en un 50 % con alta precisión para dispositivos móviles .
 
 ---
