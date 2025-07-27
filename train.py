@@ -224,6 +224,11 @@ def build_model(
     num_nmm: int = 0,
     num_suffix: int = 0,
     num_rnm: int = 0,
+    num_person: int = 0,
+    num_number: int = 0,
+    num_tense: int = 0,
+    num_aspect: int = 0,
+    num_mode: int = 0,
 ) -> nn.Module:
     """Create the selected model."""
     if name == 'stgcn':
@@ -234,6 +239,11 @@ def build_model(
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
+            num_person=num_person,
+            num_number=num_number,
+            num_tense=num_tense,
+            num_aspect=num_aspect,
+            num_mode=num_mode,
         )
     if name == 'sttn':
         return STTN(
@@ -243,6 +253,11 @@ def build_model(
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
+            num_person=num_person,
+            num_number=num_number,
+            num_tense=num_tense,
+            num_aspect=num_aspect,
+            num_mode=num_mode,
         )
     if name == 'corrnet+':
         return CorrNetPlus(
@@ -252,6 +267,11 @@ def build_model(
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
+            num_person=num_person,
+            num_number=num_number,
+            num_tense=num_tense,
+            num_aspect=num_aspect,
+            num_mode=num_mode,
         )
     if name == 'mcst':
         return MCSTTransformer(
@@ -261,6 +281,11 @@ def build_model(
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
+            num_person=num_person,
+            num_number=num_number,
+            num_tense=num_tense,
+            num_aspect=num_aspect,
+            num_mode=num_mode,
         )
     raise ValueError(f'Unknown model: {name}')
 
@@ -325,6 +350,11 @@ def train(args):
             len(ds.nmm_vocab),
             len(ds.suffix_vocab),
             len(ds.rnm_vocab),
+            len(ds.person_vocab),
+            len(ds.number_vocab),
+            len(ds.tense_vocab),
+            len(ds.aspect_vocab),
+            len(ds.mode_vocab),
         )
         model.to(device)
         criterion = nn.CTCLoss(blank=0, zero_infinity=True)
@@ -356,7 +386,11 @@ def train(args):
                     nmm_lbls,
                     suf_lbls,
                     rnm_lbls,
-                    *_,
+                    per_lbls,
+                    num_lbls,
+                    tense_lbls,
+                    aspect_lbls,
+                    mode_lbls,
                 ) = batch
                 domains = domains.to(device)
                 feats = feats.to(device)
@@ -364,16 +398,39 @@ def train(args):
                 nmm_lbls = nmm_lbls.to(device)
                 suf_lbls = suf_lbls.to(device)
                 rnm_lbls = rnm_lbls.to(device)
+                per_lbls = per_lbls.to(device)
+                num_lbls = num_lbls.to(device)
+                tense_lbls = tense_lbls.to(device)
+                aspect_lbls = aspect_lbls.to(device)
+                mode_lbls = mode_lbls.to(device)
                 feat_lens = feat_lens.to(device)
                 label_lens = label_lens.to(device)
                 return_feat = args.domain_labels or args.contrastive
                 if return_feat:
-                    (outputs, nmm_logits, suf_logits, rnm_logits), feats_emb = model(
-                        feats, return_features=True
-                    )
+                    (
+                        gloss_logits,
+                        nmm_logits,
+                        suf_logits,
+                        rnm_logits,
+                        per_logits,
+                        num_logits,
+                        tense_logits,
+                        aspect_logits,
+                        mode_logits,
+                    ), feats_emb = model(feats, return_features=True)
                 else:
-                    outputs, nmm_logits, suf_logits, rnm_logits = model(feats)
-                outputs = outputs.permute(1, 0, 2)  # T,B,C
+                    (
+                        gloss_logits,
+                        nmm_logits,
+                        suf_logits,
+                        rnm_logits,
+                        per_logits,
+                        num_logits,
+                        tense_logits,
+                        aspect_logits,
+                        mode_logits,
+                    ) = model(feats)
+                outputs = gloss_logits.permute(1, 0, 2)  # T,B,C
                 # nn.CTCLoss requiere que todas las etiquetas estén
                 # concatenadas en un solo vector y se pasen sus longitudes
                 # originales. No quitar flatten() ni label_lens al extender
@@ -386,6 +443,16 @@ def train(args):
                     loss = loss + ce_loss(suf_logits, suf_lbls)
                 if rnm_logits is not None:
                     loss = loss + ce_loss(rnm_logits, rnm_lbls)
+                if per_logits is not None:
+                    loss = loss + ce_loss(per_logits, per_lbls)
+                if num_logits is not None:
+                    loss = loss + ce_loss(num_logits, num_lbls)
+                if tense_logits is not None:
+                    loss = loss + ce_loss(tense_logits, tense_lbls)
+                if aspect_logits is not None:
+                    loss = loss + ce_loss(aspect_logits, aspect_lbls)
+                if mode_logits is not None:
+                    loss = loss + ce_loss(mode_logits, mode_lbls)
                 if args.domain_labels:
                     dom_feat = feats_emb.mean(dim=1)
                     dom_logits = disc(grad_reverse(dom_feat))

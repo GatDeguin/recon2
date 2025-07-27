@@ -49,6 +49,11 @@ class STTN(nn.Module):
         num_nmm: int = 0,
         num_suffix: int = 0,
         num_rnm: int = 0,
+        num_person: int = 0,
+        num_number: int = 0,
+        num_tense: int = 0,
+        num_aspect: int = 0,
+        num_mode: int = 0,
     ):
         super().__init__()
         self.input_proj = nn.Conv2d(in_channels, embed_dim, kernel_size=1)
@@ -58,6 +63,11 @@ class STTN(nn.Module):
         self.nmm_head = nn.Linear(embed_dim, num_nmm) if num_nmm > 0 else None
         self.suffix_head = nn.Linear(embed_dim, num_suffix) if num_suffix > 0 else None
         self.rnm_head = nn.Linear(embed_dim, num_rnm) if num_rnm > 0 else None
+        self.person_head = nn.Linear(embed_dim, num_person) if num_person > 0 else None
+        self.number_head = nn.Linear(embed_dim, num_number) if num_number > 0 else None
+        self.tense_head = nn.Linear(embed_dim, num_tense) if num_tense > 0 else None
+        self.aspect_head = nn.Linear(embed_dim, num_aspect) if num_aspect > 0 else None
+        self.mode_head = nn.Linear(embed_dim, num_mode) if num_mode > 0 else None
 
     def forward(self, x: torch.Tensor, return_features: bool = False) -> torch.Tensor:
         # x: (N, C, T, V)
@@ -71,7 +81,12 @@ class STTN(nn.Module):
         nmm = self.nmm_head(pooled) if self.nmm_head else None
         suffix = self.suffix_head(pooled) if self.suffix_head else None
         rnm = self.rnm_head(pooled) if self.rnm_head else None
-        outputs = (gloss, nmm, suffix, rnm)
+        person = self.person_head(pooled) if self.person_head else None
+        number = self.number_head(pooled) if self.number_head else None
+        tense = self.tense_head(pooled) if self.tense_head else None
+        aspect = self.aspect_head(pooled) if self.aspect_head else None
+        mode = self.mode_head(pooled) if self.mode_head else None
+        outputs = (gloss, nmm, suffix, rnm, person, number, tense, aspect, mode)
         if return_features:
             return outputs, feat
         return outputs
