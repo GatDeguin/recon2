@@ -22,6 +22,7 @@ def _create_data(h5_path, csv_path):
         "label": ["hello world"],
         "nmm": ["neutral"],
         "suffix": ["none"],
+        "rnm": ["tipo1"],
     }).to_csv(csv_path, sep=";", index=False)
 
 

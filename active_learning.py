@@ -19,7 +19,7 @@ def compute_scores(model: torch.nn.Module, loader: DataLoader) -> List[Tuple[str
     model.eval()
     with torch.no_grad():
         for idx, batch in enumerate(loader):
-            # collate returns seven values; we only need the features
+            # collate returns eight values; we only need the features
             feats = batch[0].to(device)
 
             out = model(feats)
