@@ -1,36 +1,102 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Cliente Webcam</title>
+<meta charset="utf-8" />
+<title>Webcam Client</title>
 <style>
   body { font-family: sans-serif; text-align: center; }
-  video { width: 320px; height: 240px; border: 1px solid #ccc; }
+  #container { position: relative; display: inline-block; }
+  video, canvas { width: 320px; height: 240px; border: 1px solid #ccc; }
+  canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
 </style>
 </head>
 <body>
-<h1>Transcripción en vivo</h1>
-<video id="preview" autoplay playsinline></video>
-<p id="text"></p>
-<script>
-(async () => {
-  const video = document.getElementById('preview');
-  const text = document.getElementById('text');
-  const stream = await navigator.mediaDevices.getUserMedia({video: true});
-  video.srcObject = stream;
-  const ws = new WebSocket('ws://' + location.hostname + ':8000/ws');
-  const recorder = new MediaRecorder(stream, {mimeType: 'video/webm'});
-  recorder.ondataavailable = ev => {
-    if (ev.data.size > 0 && ws.readyState === 1) {
-      ws.send(ev.data);
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.min.js"></script>
+<script type="text/javascript">
+const {useState, useEffect, useRef} = React;
+
+function App() {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const socketRef = useRef(null);
+  const recorderRef = useRef(null);
+  const holisticRef = useRef(null);
+  const [transcript, setTranscript] = useState('');
+  const [showLms, setShowLms] = useState(false);
+
+  useEffect(() => {
+    async function init() {
+      const stream = await navigator.mediaDevices.getUserMedia({video: true});
+      videoRef.current.srcObject = stream;
+
+      socketRef.current = new WebSocket('ws://' + location.hostname + ':8000/ws');
+      recorderRef.current = new MediaRecorder(stream, {mimeType: 'video/webm'});
+      recorderRef.current.ondataavailable = ev => {
+        if (ev.data.size > 0 && socketRef.current.readyState === 1) {
+          socketRef.current.send(ev.data);
+        }
+      };
+      socketRef.current.onmessage = ev => {
+        const data = JSON.parse(ev.data);
+        setTranscript(data.transcript || '');
+      };
+      recorderRef.current.start(2000);
+
+      holisticRef.current = new Holistic({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`
+      });
+      holisticRef.current.setOptions({modelComplexity: 0});
+      holisticRef.current.onResults(res => {
+        if (!showLms) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const draw = lm => {
+          lm.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x * canvas.width, p.y * canvas.height, 2, 0, 2*Math.PI);
+            ctx.fill();
+          });
+        };
+        if (res.poseLandmarks) draw(res.poseLandmarks);
+        if (res.faceLandmarks) draw(res.faceLandmarks);
+        if (res.leftHandLandmarks) draw(res.leftHandLandmarks);
+        if (res.rightHandLandmarks) draw(res.rightHandLandmarks);
+      });
+
+      const process = async () => {
+        if (showLms) await holisticRef.current.send({image: videoRef.current});
+        requestAnimationFrame(process);
+      };
+      requestAnimationFrame(process);
     }
-  };
-  ws.onmessage = ev => {
-    const data = JSON.parse(ev.data);
-    text.innerText = data.transcript || '';
-  };
-  recorder.start(2000); // enviar cada 2s
-})();
+    init();
+    return () => {
+      if (recorderRef.current) recorderRef.current.stop();
+      if (socketRef.current) socketRef.current.close();
+      if (holisticRef.current) holisticRef.current.close();
+    };
+  }, [showLms]);
+
+  return React.createElement('div', null,
+    React.createElement('h1', null, 'Live Transcription'),
+    React.createElement('div', {id: 'container'},
+      React.createElement('video', {ref: videoRef, autoPlay: true, playsInline: true}),
+      React.createElement('canvas', {ref: canvasRef, width: 320, height: 240})
+    ),
+    React.createElement('p', null, transcript),
+    React.createElement('label', null,
+      React.createElement('input', {type: 'checkbox', checked: showLms,
+        onChange: e => setShowLms(e.target.checked)}),
+      ' Show landmarks'
+    )
+  );
+}
+
+ReactDOM.render(React.createElement(App), document.getElementById('root'));
 </script>
 </body>
 </html>
