@@ -69,3 +69,12 @@ face:
 flow:
   count: 1
   connections: []
+head_pose:
+  count: 1
+  connections: []
+torso_pose:
+  count: 1
+  connections: []
+aus:
+  count: 17
+  connections: []

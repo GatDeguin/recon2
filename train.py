@@ -16,8 +16,9 @@ from models.corrnet import CorrNetPlus
 from models.mcst_transformer import MCSTTransformer
 
 class SignDataset(Dataset):
-    def __init__(self, h5_path, csv_path, domain_csv=None, segments: bool = False):
+    def __init__(self, h5_path, csv_path, domain_csv=None, segments: bool = False, include_openface: bool = False):
         self.h5 = h5py.File(h5_path, 'r')
+        self.include_openface = include_openface
         df = pd.read_csv(csv_path, sep=';')
         label_map = {str(r['id']): str(r['label']) for _, r in df.iterrows()}
         nmm_map = {str(r['id']): str(r.get('nmm', 'none')) for _, r in df.iterrows()} if 'nmm' in df.columns else {}
@@ -71,6 +72,19 @@ class SignDataset(Dataset):
         self.mode_vocab = self._build_map([s[10] for s in self.samples])
         self.num_domains = len(set(s[2] for s in self.samples)) or 1
 
+        # Determine number of graph nodes
+        self.num_nodes = 544
+        self.n_aus = 0
+        if self.include_openface and self.samples:
+            g = self.h5[self.samples[0][0]]
+            if 'head_pose' in g:
+                self.num_nodes += 1
+            if 'torso_pose' in g:
+                self.num_nodes += 1
+            if 'aus' in g:
+                self.n_aus = g['aus'].shape[1]
+                self.num_nodes += self.n_aus
+
     def close(self):
         """Close the underlying HDF5 file if open."""
         if getattr(self, "h5", None) is not None:
@@ -123,6 +137,17 @@ class SignDataset(Dataset):
         mag = np.linalg.norm(avg_flow, axis=-1, keepdims=True)
         flow_node = np.concatenate([avg_flow, mag], axis=1)  # (T,3)
         nodes = np.concatenate([nodes, flow_node[:, None, :]], axis=1)
+        if self.include_openface:
+            if 'head_pose' in g:
+                head = g['head_pose'][:].reshape(-1, 1, 3)
+                nodes = np.concatenate([nodes, head], axis=1)
+            if 'torso_pose' in g:
+                torso = g['torso_pose'][:].reshape(-1, 1, 3)
+                nodes = np.concatenate([nodes, torso], axis=1)
+            if 'aus' in g:
+                aus = g['aus'][:]
+                aus = np.repeat(aus[:, :, None], 3, axis=2)
+                nodes = np.concatenate([nodes, aus], axis=1)
         x = torch.from_numpy(nodes).permute(2,0,1).float()  # (C,T,V)
         tokens = [self.vocab[t] for t in lbl.split() if t in self.vocab]
         y = torch.tensor(tokens, dtype=torch.long)
@@ -229,13 +254,14 @@ def build_model(
     num_tense: int = 0,
     num_aspect: int = 0,
     num_mode: int = 0,
+    num_nodes: int = 544,
 ) -> nn.Module:
     """Create the selected model."""
     if name == 'stgcn':
         return STGCN(
             in_channels=3,
             num_class=num_classes,
-            num_nodes=544,
+            num_nodes=num_nodes,
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
@@ -249,7 +275,7 @@ def build_model(
         return STTN(
             in_channels=3,
             num_class=num_classes,
-            num_nodes=544,
+            num_nodes=num_nodes,
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
@@ -263,7 +289,7 @@ def build_model(
         return CorrNetPlus(
             in_channels=3,
             num_class=num_classes,
-            num_nodes=544,
+            num_nodes=num_nodes,
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
@@ -277,7 +303,7 @@ def build_model(
         return MCSTTransformer(
             in_channels=3,
             num_class=num_classes,
-            num_nodes=544,
+            num_nodes=num_nodes,
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
@@ -341,7 +367,13 @@ def evaluate(model: nn.Module, dl: DataLoader, inv_vocab: dict, device: torch.de
 
 
 def train(args):
-    with SignDataset(args.h5_file, args.csv_file, args.domain_labels, segments=args.segments) as ds:
+    with SignDataset(
+        args.h5_file,
+        args.csv_file,
+        args.domain_labels,
+        segments=args.segments,
+        include_openface=args.include_openface,
+    ) as ds:
         dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = build_model(
@@ -355,6 +387,7 @@ def train(args):
             len(ds.tense_vocab),
             len(ds.aspect_vocab),
             len(ds.mode_vocab),
+            num_nodes=ds.num_nodes,
         )
         model.to(device)
         criterion = nn.CTCLoss(blank=0, zero_infinity=True)
@@ -495,5 +528,6 @@ if __name__ == '__main__':
     p.add_argument('--domain_labels', help='CSV con etiquetas de dominio opcional')
     p.add_argument('--contrastive', action='store_true', help='Use contrastive loss')
     p.add_argument('--segments', action='store_true', help='Load segment_* subgroups as separate samples')
+    p.add_argument('--include_openface', action='store_true', help='Load head/torso pose and AUs if present')
     args = p.parse_args()
     train(args)
