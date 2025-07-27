@@ -16,7 +16,7 @@ from models.corrnet import CorrNetPlus
 from models.mcst_transformer import MCSTTransformer
 
 class SignDataset(Dataset):
-    def __init__(self, h5_path, csv_path, domain_csv=None):
+    def __init__(self, h5_path, csv_path, domain_csv=None, segments: bool = False):
         self.h5 = h5py.File(h5_path, 'r')
         df = pd.read_csv(csv_path, sep=';')
         label_map = {str(r['id']): str(r['label']) for _, r in df.iterrows()}
@@ -33,21 +33,33 @@ class SignDataset(Dataset):
             dom = pd.read_csv(domain_csv, sep=';')
             self.domain_map = {str(r['id']): int(r['domain']) for _, r in dom.iterrows()}
         self.samples = []
+
+        def _add_sample(path: str, base_id: str) -> None:
+            if base_id in label_map:
+                domain = self.domain_map.get(base_id, 0)
+                nmm = nmm_map.get(base_id, 'none') if nmm_map else 'none'
+                suf = suf_map.get(base_id, 'none') if suf_map else 'none'
+                rnm = rnm_map.get(base_id, 'none') if rnm_map else 'none'
+                per = per_map.get(base_id, 'none') if per_map else 'none'
+                num = num_map.get(base_id, 'none') if num_map else 'none'
+                tense = tense_map.get(base_id, 'none') if tense_map else 'none'
+                aspect = aspect_map.get(base_id, 'none') if aspect_map else 'none'
+                mode = mode_map.get(base_id, 'none') if mode_map else 'none'
+                self.samples.append(
+                    (path, label_map[base_id], domain, nmm, suf, rnm, per, num, tense, aspect, mode),
+                )
+
         for vid in self.h5.keys():
             base = os.path.splitext(vid)[0]
-            if base in label_map:
-                domain = self.domain_map.get(base, 0)
-                nmm = nmm_map.get(base, 'none') if nmm_map else 'none'
-                suf = suf_map.get(base, 'none') if suf_map else 'none'
-                rnm = rnm_map.get(base, 'none') if rnm_map else 'none'
-                per = per_map.get(base, 'none') if per_map else 'none'
-                num = num_map.get(base, 'none') if num_map else 'none'
-                tense = tense_map.get(base, 'none') if tense_map else 'none'
-                aspect = aspect_map.get(base, 'none') if aspect_map else 'none'
-                mode = mode_map.get(base, 'none') if mode_map else 'none'
-                self.samples.append(
-                    (vid, label_map[base], domain, nmm, suf, rnm, per, num, tense, aspect, mode)
-                )
+            segs = []
+            if segments:
+                grp = self.h5[vid]
+                segs = sorted(k for k in grp.keys() if k.startswith('segment_'))
+            if segments and segs:
+                for seg in segs:
+                    _add_sample(f"{vid}/{seg}", base)
+            else:
+                _add_sample(vid, base)
         self.vocab = self._build_vocab()
         self.nmm_vocab = self._build_map([s[3] for s in self.samples])
         self.suffix_vocab = self._build_map([s[4] for s in self.samples])
@@ -297,7 +309,7 @@ def evaluate(model: nn.Module, dl: DataLoader, inv_vocab: dict, device: torch.de
 
 
 def train(args):
-    with SignDataset(args.h5_file, args.csv_file, args.domain_labels) as ds:
+    with SignDataset(args.h5_file, args.csv_file, args.domain_labels, segments=args.segments) as ds:
         dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = build_model(
@@ -405,5 +417,6 @@ if __name__ == '__main__':
     p.add_argument('--model', type=str, default='stgcn', choices=['stgcn', 'sttn', 'corrnet+', 'mcst'], help='Model architecture')
     p.add_argument('--domain_labels', help='CSV con etiquetas de dominio opcional')
     p.add_argument('--contrastive', action='store_true', help='Use contrastive loss')
+    p.add_argument('--segments', action='store_true', help='Load segment_* subgroups as separate samples')
     args = p.parse_args()
     train(args)
