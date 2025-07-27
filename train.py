@@ -23,6 +23,11 @@ class SignDataset(Dataset):
         nmm_map = {str(r['id']): str(r.get('nmm', 'none')) for _, r in df.iterrows()} if 'nmm' in df.columns else {}
         suf_map = {str(r['id']): str(r.get('suffix', 'none')) for _, r in df.iterrows()} if 'suffix' in df.columns else {}
         rnm_map = {str(r['id']): str(r.get('rnm', 'none')) for _, r in df.iterrows()} if 'rnm' in df.columns else {}
+        per_map = {str(r['id']): str(r.get('person', 'none')) for _, r in df.iterrows()} if 'person' in df.columns else {}
+        num_map = {str(r['id']): str(r.get('number', 'none')) for _, r in df.iterrows()} if 'number' in df.columns else {}
+        tense_map = {str(r['id']): str(r.get('tense', 'none')) for _, r in df.iterrows()} if 'tense' in df.columns else {}
+        aspect_map = {str(r['id']): str(r.get('aspect', 'none')) for _, r in df.iterrows()} if 'aspect' in df.columns else {}
+        mode_map = {str(r['id']): str(r.get('mode', 'none')) for _, r in df.iterrows()} if 'mode' in df.columns else {}
         self.domain_map = {}
         if domain_csv:
             dom = pd.read_csv(domain_csv, sep=';')
@@ -35,11 +40,23 @@ class SignDataset(Dataset):
                 nmm = nmm_map.get(base, 'none') if nmm_map else 'none'
                 suf = suf_map.get(base, 'none') if suf_map else 'none'
                 rnm = rnm_map.get(base, 'none') if rnm_map else 'none'
-                self.samples.append((vid, label_map[base], domain, nmm, suf, rnm))
+                per = per_map.get(base, 'none') if per_map else 'none'
+                num = num_map.get(base, 'none') if num_map else 'none'
+                tense = tense_map.get(base, 'none') if tense_map else 'none'
+                aspect = aspect_map.get(base, 'none') if aspect_map else 'none'
+                mode = mode_map.get(base, 'none') if mode_map else 'none'
+                self.samples.append(
+                    (vid, label_map[base], domain, nmm, suf, rnm, per, num, tense, aspect, mode)
+                )
         self.vocab = self._build_vocab()
         self.nmm_vocab = self._build_map([s[3] for s in self.samples])
         self.suffix_vocab = self._build_map([s[4] for s in self.samples])
         self.rnm_vocab = self._build_map([s[5] for s in self.samples])
+        self.person_vocab = self._build_map([s[6] for s in self.samples])
+        self.number_vocab = self._build_map([s[7] for s in self.samples])
+        self.tense_vocab = self._build_map([s[8] for s in self.samples])
+        self.aspect_vocab = self._build_map([s[9] for s in self.samples])
+        self.mode_vocab = self._build_map([s[10] for s in self.samples])
         self.num_domains = len(set(s[2] for s in self.samples)) or 1
 
     def close(self):
@@ -76,7 +93,7 @@ class SignDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        vid, lbl, domain, nmm, suf, rnm = self.samples[idx]
+        vid, lbl, domain, nmm, suf, rnm, per, num, tense, aspect, mode = self.samples[idx]
         g = self.h5[vid]
         pose = g['pose'][:].reshape(-1, 33, 3)
         lh = g['left_hand'][:].reshape(-1, 21, 3)
@@ -94,11 +111,40 @@ class SignDataset(Dataset):
         nmm_id = self.nmm_vocab[nmm]
         suf_id = self.suffix_vocab[suf]
         rnm_id = self.rnm_vocab[rnm]
-        return x, y, domain, nmm_id, suf_id, rnm_id
+        per_id = self.person_vocab[per]
+        num_id = self.number_vocab[num]
+        tense_id = self.tense_vocab[tense]
+        aspect_id = self.aspect_vocab[aspect]
+        mode_id = self.mode_vocab[mode]
+        return (
+            x,
+            y,
+            domain,
+            nmm_id,
+            suf_id,
+            rnm_id,
+            per_id,
+            num_id,
+            tense_id,
+            aspect_id,
+            mode_id,
+        )
 
 def collate(batch):
     """Pad secuencias y empaquetar dominios y labels auxiliares."""
-    feats, labels, domains, nmms, sufs, rnms = zip(*batch)
+    (
+        feats,
+        labels,
+        domains,
+        nmms,
+        sufs,
+        rnms,
+        pers,
+        nums,
+        tenses,
+        aspects,
+        modes,
+    ) = zip(*batch)
     T = max(f.shape[1] for f in feats)
     V = feats[0].shape[2]
     C = feats[0].shape[0]
@@ -125,6 +171,11 @@ def collate(batch):
     nmm_t = torch.tensor(nmms, dtype=torch.long)
     suf_t = torch.tensor(sufs, dtype=torch.long)
     rnm_t = torch.tensor(rnms, dtype=torch.long)
+    per_t = torch.tensor(pers, dtype=torch.long)
+    num_t = torch.tensor(nums, dtype=torch.long)
+    tense_t = torch.tensor(tenses, dtype=torch.long)
+    aspect_t = torch.tensor(aspects, dtype=torch.long)
+    mode_t = torch.tensor(modes, dtype=torch.long)
     return (
         padded_feats,
         padded_labels,
@@ -134,6 +185,11 @@ def collate(batch):
         nmm_t,
         suf_t,
         rnm_t,
+        per_t,
+        num_t,
+        tense_t,
+        aspect_t,
+        mode_t,
     )
 
 def _contrastive(feats: torch.Tensor) -> torch.Tensor:
@@ -203,7 +259,16 @@ def evaluate(model: nn.Module, dl: DataLoader, inv_vocab: dict, device: torch.de
     correct_nmm = 0
     count_nmm = 0
     with torch.no_grad():
-        for feats, labels, feat_lens, label_lens, domains, nmm_lbls, _, _ in dl:
+        for batch in dl:
+            (
+                feats,
+                labels,
+                feat_lens,
+                label_lens,
+                domains,
+                nmm_lbls,
+                *_,
+            ) = batch
             feats = feats.to(device)
             labels = labels.to(device)
             nmm_lbls = nmm_lbls.to(device)
@@ -272,6 +337,7 @@ def train(args):
                     nmm_lbls,
                     suf_lbls,
                     rnm_lbls,
+                    *_,
                 ) = batch
                 domains = domains.to(device)
                 feats = feats.to(device)
