@@ -202,7 +202,10 @@ class SignDataset(Dataset):
             mode_id,
         )
 
-def collate(batch):
+from functools import partial
+
+
+def collate(batch, max_length: int | None = None):
     """Pad secuencias y empaquetar dominios y labels auxiliares."""
     (
         feats,
@@ -217,16 +220,21 @@ def collate(batch):
         aspects,
         modes,
     ) = zip(*batch)
-    T = max(f.shape[1] for f in feats)
+    if max_length is None:
+        T = max(f.shape[1] for f in feats)
+    else:
+        T = max_length
     V = feats[0].shape[2]
     C = feats[0].shape[0]
     padded_feats = []
     feat_lengths = []
     for f in feats:
-        feat_lengths.append(f.shape[1])
+        feat_lengths.append(min(f.shape[1], T))
         if f.shape[1] < T:
             pad = torch.zeros(C, T - f.shape[1], V)
             f = torch.cat([f, pad], dim=1)
+        else:
+            f = f[:, :T, :]
         padded_feats.append(f)
     padded_feats = torch.stack(padded_feats)
     L = max(len(l) for l in labels)
@@ -263,6 +271,17 @@ def collate(batch):
         aspect_t,
         mode_t,
     )
+
+
+def length_for_epoch(epoch: int, initial: int, schedule: list[int]) -> int | None:
+    """Return the maximum sequence length for the given epoch or ``None``."""
+    if epoch == 0:
+        length = initial
+    elif epoch - 1 < len(schedule):
+        length = schedule[epoch - 1]
+    else:
+        length = schedule[-1] if schedule else initial
+    return length if length > 0 else None
 
 def _contrastive(feats: torch.Tensor) -> torch.Tensor:
     """Simple NT-Xent style loss over batch-averaged features."""
@@ -403,7 +422,7 @@ def train(args):
         segments=args.segments,
         include_openface=args.include_openface,
     ) as ds:
-        dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
+        schedule = [int(s) for s in args.length_schedule.split(',')] if args.length_schedule else []
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = build_model(
             args.model,
@@ -436,6 +455,13 @@ def train(args):
         inv_vocab = {v: k for k, v in ds.vocab.items()}
 
         for epoch in range(args.epochs):
+            max_len = length_for_epoch(epoch, args.initial_length, schedule)
+            dl = DataLoader(
+                ds,
+                batch_size=args.batch_size,
+                shuffle=True,
+                collate_fn=partial(collate, max_length=max_len),
+            )
             model.train()
             epoch_loss = 0.0
             for batch in dl:
@@ -558,5 +584,7 @@ if __name__ == '__main__':
     p.add_argument('--contrastive', action='store_true', help='Use contrastive loss')
     p.add_argument('--segments', action='store_true', help='Load segment_* subgroups as separate samples')
     p.add_argument('--include_openface', action='store_true', help='Load head/torso pose and AUs if present')
+    p.add_argument('--initial_length', type=int, default=0, help='Initial maximum sequence length')
+    p.add_argument('--length_schedule', default='', help='Comma separated maximum lengths for subsequent epochs')
     args = p.parse_args()
     train(args)
