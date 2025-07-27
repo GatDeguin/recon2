@@ -13,14 +13,22 @@ from train import SignDataset, collate, build_model
 
 
 def compute_scores(model: torch.nn.Module, loader: DataLoader) -> List[Tuple[str, float]]:
+    """Compute average confidence for each sample in the loader."""
     device = next(model.parameters()).device
-    scores = []
+    scores: List[Tuple[str, float]] = []
     model.eval()
     with torch.no_grad():
-        for idx, (feats, labels, feat_lens, label_lens) in enumerate(loader):
-            feats = feats.to(device)
+        for idx, batch in enumerate(loader):
+            # collate returns seven values; we only need the features
+            feats = batch[0].to(device)
+
             out = model(feats)
-            conf = out.exp().max(-1).values.mean().item()
+            if isinstance(out, (tuple, list)):
+                gloss_logits = out[0]
+            else:
+                gloss_logits = out
+
+            conf = gloss_logits.exp().max(-1).values.mean().item()
             vid = loader.dataset.samples[idx][0]
             scores.append((vid, conf))
     return scores
