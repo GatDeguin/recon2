@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # track_lsa_multi_signer_gpu_updated.py
-# Pipeline LSA multi‑signer con aceleración GPU para YOLOv8 y preprocesado con OpenCV CUDA
+# Pipeline LSA multi‑signer con aceleración GPU para YOLOv8 y preprocesado con OpenCV CUDA.
+# Detecta límites de seña mediante PELT (ruptures) o variaciones de velocidad y
+# guarda cada segmento por separado en el fichero HDF5.
 
 import os
 import cv2
@@ -12,6 +14,11 @@ import mediapipe as mp
 from ultralytics import YOLO
 from optical_flow.raft_runner import compute_optical_flow
 import torch
+
+try:
+    import ruptures as rpt  # optional dependency
+except Exception:  # pragma: no cover - optional dependency
+    rpt = None
 
 try:
     import onnxruntime as ort  # optional, only when using YOLOX
@@ -68,6 +75,40 @@ def infer_active_signer(prev_centers, cur_centers,
     dwell_state['active_id'] = active_id
     dwell_state['count'] = count
     return active_id, dwell_state
+
+
+def _segment_sequences(lh_seq, rh_seq, face_seq, penalty=10):
+    """Detect change points using PELT on landmark velocities."""
+    if len(lh_seq) == 0:
+        return [(0, 0)]
+    lh = np.stack(lh_seq)
+    rh = np.stack(rh_seq)
+    face = np.stack(face_seq)
+    speed = np.zeros(len(lh), np.float32)
+    if len(lh) > 1:
+        lh_diff = np.linalg.norm(lh[1:] - lh[:-1], axis=1)
+        rh_diff = np.linalg.norm(rh[1:] - rh[:-1], axis=1)
+        face_diff = np.linalg.norm(face[1:] - face[:-1], axis=1)
+        speed[1:] = lh_diff + rh_diff + 0.1 * face_diff
+
+    if rpt is not None and len(speed) > 1:
+        algo = rpt.Pelt(model="rbf").fit(speed.reshape(-1, 1))
+        boundaries = [0] + algo.predict(pen=penalty)
+    else:  # Fallback using simple threshold on speed
+        thr = speed.mean() * 0.5
+        boundaries = [0]
+        for i in range(1, len(speed)):
+            if speed[i] < thr and speed[max(0, i-1)] >= thr:
+                boundaries.append(i)
+        boundaries.append(len(speed))
+
+    segments = []
+    for s, e in zip(boundaries[:-1], boundaries[1:]):
+        if e > s:
+            segments.append((s, e))
+    if not segments:
+        segments.append((0, len(speed)))
+    return segments
 
 
 def procesar_videos(input_dir, output_file,
@@ -235,12 +276,24 @@ def procesar_videos(input_dir, output_file,
 
             pbar.close(); cap.release()
             flow_seq = compute_optical_flow(os.path.join(input_dir, vid))
-            grp=h5f.create_group(vid)
-            grp.create_dataset('pose',data=np.stack(pose_seq),compression='gzip')
-            grp.create_dataset('left_hand',data=np.stack(lh_seq),compression='gzip')
-            grp.create_dataset('right_hand',data=np.stack(rh_seq),compression='gzip')
-            grp.create_dataset('face',data=np.stack(face_seq),compression='gzip')
-            grp.create_dataset('optical_flow',data=flow_seq,compression='gzip')
+
+            segments = _segment_sequences(lh_seq, rh_seq, face_seq)
+            pose_arr = np.stack(pose_seq)
+            lh_arr = np.stack(lh_seq)
+            rh_arr = np.stack(rh_seq)
+            face_arr = np.stack(face_seq)
+
+            grp = h5f.create_group(vid)
+            for i, (s, e) in enumerate(segments):
+                sg = grp.create_group(f"segment_{i:03d}")
+                sg.create_dataset('pose', data=pose_arr[s:e], compression='gzip')
+                sg.create_dataset('left_hand', data=lh_arr[s:e], compression='gzip')
+                sg.create_dataset('right_hand', data=rh_arr[s:e], compression='gzip')
+                sg.create_dataset('face', data=face_arr[s:e], compression='gzip')
+                if flow_seq.size > 0 and e - s > 1:
+                    sg.create_dataset('optical_flow', data=flow_seq[s:e-1], compression='gzip')
+                else:
+                    sg.create_dataset('optical_flow', data=np.empty((0,), np.float32), compression='gzip')
 
     holistic.close()
     if show_window: cv2.destroyAllWindows()
