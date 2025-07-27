@@ -149,7 +149,21 @@ def distill(args: argparse.Namespace) -> None:
             student.train()
             total_loss = 0.0
             for batch in dl:
-                feats, labels, feat_lens, label_lens, _, nmm_lbls, _, _ = batch
+                (
+                    feats,
+                    labels,
+                    feat_lens,
+                    label_lens,
+                    _,
+                    nmm_lbls,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                ) = batch
                 feats = feats.to(device)
                 labels = labels.to(device)
                 feat_lens = feat_lens.to(device)
