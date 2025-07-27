@@ -80,8 +80,14 @@ class SignDataset(Dataset):
         tokens = set()
         for s in self.samples:
             tokens.update(s[1].split())
-        vocab = {tok: i+1 for i, tok in enumerate(sorted(tokens))}
-        vocab['<blank>'] = 0
+        vocab = {
+            '<blank>': 0,
+            '<sos>': 1,
+            '<eos>': 2,
+        }
+        next_index = 3
+        for i, tok in enumerate(sorted(tokens)):
+            vocab[tok] = next_index + i
         return vocab
 
     @staticmethod
@@ -277,11 +283,12 @@ def evaluate(model: nn.Module, dl: DataLoader, inv_vocab: dict, device: torch.de
             for p, t in zip(preds, labels):
                 pred_tokens = []
                 last = 0
+                skip = {0, 1, 2}
                 for tok in p.tolist():
-                    if tok != 0 and tok != last:
+                    if tok not in skip and tok != last:
                         pred_tokens.append(inv_vocab.get(tok, ""))
                     last = tok
-                tgt_tokens = [inv_vocab.get(int(x), "") for x in t if int(x) != 0]
+                tgt_tokens = [inv_vocab.get(int(x), "") for x in t if int(x) not in skip]
                 hyp = " ".join(pred_tokens).strip()
                 ref = " ".join(tgt_tokens).strip()
                 if wer:
@@ -395,6 +402,9 @@ def train(args):
             logger.log(wer=wer_val, nmm_acc=nmm_acc)
 
         logger.close()
+        with open('vocab.txt', 'w', encoding='utf-8') as f:
+            for i in range(len(inv_vocab)):
+                f.write(inv_vocab.get(i, '') + '\n')
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description='Train sign language models with CTC loss')

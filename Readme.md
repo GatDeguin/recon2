@@ -153,7 +153,7 @@ Para realizar pruebas rápidas sin modelos entrenados, cree ficheros de relleno:
 ```
 mkdir -p checkpoints
 :>checkpoints/model.ts
-printf "<unk>\n<pad>\n" > vocab.txt
+printf "<blank>\n<sos>\n<eos>\n" > vocab.txt
 ```
 
 Si dispone de los pesos reales y un vocabulario entrenado, reemplace estos archivos por los originales.
