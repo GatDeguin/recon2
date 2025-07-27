@@ -16,10 +16,29 @@ def _load_model():
             default_path = Path(__file__).resolve().parent.parent / "checkpoints" / "raft-sintel.pth"
             if default_path.exists():
                 ckpt = str(default_path)
-        if ckpt is not None:
-            _model = torch.hub.load('princeton-vl/RAFT', 'raft', pretrained=False, ckpt=ckpt)
+
+        repo_env = os.environ.get("RAFT_REPO")
+        if repo_env:
+            repo_dir = Path(repo_env)
+            if not repo_dir.exists():
+                raise FileNotFoundError(f"RAFT_REPO path does not exist: {repo_env}")
+            repo_or_dir = str(repo_dir)
         else:
-            _model = torch.hub.load('princeton-vl/RAFT', 'raft', pretrained=True)
+            # Attempt to locate RAFT in the torch hub cache
+            hub_dir = Path(torch.hub.get_dir())
+            cached = list(hub_dir.glob("princeton-vl_RAFT*"))
+            if not cached:
+                raise RuntimeError(
+                    "RAFT repository not found in torch hub cache. "
+                    "Set RAFT_REPO to a local clone of the RAFT repository."
+                )
+            repo_or_dir = str(cached[0])
+
+        if ckpt is not None:
+            _model = torch.hub.load(repo_or_dir, 'raft', pretrained=False, ckpt=ckpt, source='local')
+        else:
+            _model = torch.hub.load(repo_or_dir, 'raft', pretrained=True, source='local')
+
         _model = _model.to(_device)
         _model.eval()
     return _model
