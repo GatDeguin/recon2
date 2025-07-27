@@ -106,6 +106,13 @@ El encoder alimenta tres cabezas:
 Se inicia el entrenamiento con clips cortos (< 10 frames) y gradualmente se incorporan secuencias largas (> 32 frames) para estabilizar la convergencia .
 Se emplea MixUp temporal, speed perturbation y fondos sintéticos generados por GANs para robustez ante variaciones adversariales .
 
+Cada técnica puede activarse con el parámetro ``augment`` de ``SignDataset``:
+
+```python
+from augmentations import speed_perturbation
+ds = SignDataset("data.h5", "labels.csv", augment=lambda x: speed_perturbation(x, 0.9))
+```
+
 ### 4.3 Adaptación Adversarial de Dominio
 
 Se integra un **Gradient Reversal Layer** (DANN) para alinear las características entre LSA‑T y otros corpus (ASL, GSL), reduciendo el gap de dominio y mejorando la generalización .

@@ -16,9 +16,36 @@ from models.corrnet import CorrNetPlus
 from models.mcst_transformer import MCSTTransformer
 
 class SignDataset(Dataset):
-    def __init__(self, h5_path, csv_path, domain_csv=None, segments: bool = False, include_openface: bool = False):
+    def __init__(
+        self,
+        h5_path,
+        csv_path,
+        domain_csv=None,
+        segments: bool = False,
+        include_openface: bool = False,
+        augment=None,
+    ):
+        """Dataset for sign language graph sequences.
+
+        Parameters
+        ----------
+        h5_path : str
+            Ruta al archivo ``HDF5`` con las secuencias.
+        csv_path : str
+            Archivo ``CSV`` con las etiquetas.
+        domain_csv : str, optional
+            CSV con dominios para DANN.
+        segments : bool, default ``False``
+            Leer segmentos pre-cortados.
+        include_openface : bool, default ``False``
+            Incluir nodos adicionales de OpenFace.
+        augment : callable, optional
+            Función que recibe ``x`` y retorna la versión aumentada.
+        """
+
         self.h5 = h5py.File(h5_path, 'r')
         self.include_openface = include_openface
+        self.augment = augment
         df = pd.read_csv(csv_path, sep=';')
         label_map = {str(r['id']): str(r['label']) for _, r in df.iterrows()}
         nmm_map = {str(r['id']): str(r.get('nmm', 'none')) for _, r in df.iterrows()} if 'nmm' in df.columns else {}
@@ -148,7 +175,9 @@ class SignDataset(Dataset):
                 aus = g['aus'][:]
                 aus = np.repeat(aus[:, :, None], 3, axis=2)
                 nodes = np.concatenate([nodes, aus], axis=1)
-        x = torch.from_numpy(nodes).permute(2,0,1).float()  # (C,T,V)
+        x = torch.from_numpy(nodes).permute(2, 0, 1).float()  # (C,T,V)
+        if self.augment is not None:
+            x = self.augment(x)
         tokens = [self.vocab[t] for t in lbl.split() if t in self.vocab]
         y = torch.tensor(tokens, dtype=torch.long)
         nmm_id = self.nmm_vocab[nmm]
