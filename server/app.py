@@ -8,6 +8,11 @@ import numpy as np
 import cv2
 import mediapipe as mp
 from ultralytics import YOLO
+
+try:
+    import onnxruntime as ort  # optional for YOLOX
+except Exception:  # pragma: no cover - optional dependency
+    ort = None
 from optical_flow.raft_runner import compute_optical_flow
 import os
 import uuid
@@ -27,7 +32,14 @@ except Exception:  # pragma: no cover - optional dependency
 
 # Inicializar modelos globales una sola vez
 mp_holistic = mp.solutions.holistic
-yolo_model = YOLO("yolov8n.pt")
+yolox_path = os.environ.get("YOLOX_ONNX")
+if yolox_path and ort is not None:
+    providers = ["CUDAExecutionProvider"] if torch.cuda.is_available() else ["CPUExecutionProvider"]
+    yolox_sess = ort.InferenceSession(yolox_path, providers=providers)
+    yolo_model = None
+else:
+    yolox_sess = None
+    yolo_model = YOLO("yolov8n.pt")
 holistic_model = mp_holistic.Holistic(
     static_image_mode=False,
     model_complexity=2,
@@ -86,7 +98,7 @@ def extract_features_from_bytes(data: bytes) -> torch.Tensor:
 
 def _extract_features(path: str) -> torch.Tensor:
     """Compute landmarks and optical flow for a video path."""
-    global yolo_model, holistic_model
+    global yolo_model, holistic_model, yolox_sess
 
     cap = cv2.VideoCapture(path)
     pose_seq, lh_seq, rh_seq, face_seq = [], [], [], []
@@ -94,8 +106,25 @@ def _extract_features(path: str) -> torch.Tensor:
         ret, frame = cap.read()
         if not ret:
             break
-        yres = yolo_model(frame, device=0 if torch.cuda.is_available() else "cpu", half=torch.cuda.is_available(), conf=0.5, classes=[0])[0]
-        boxes = yres.boxes.xyxy.cpu().numpy().astype(int)
+        if yolox_sess is not None:
+            ih, iw = yolox_sess.get_inputs()[0].shape[2:]
+            img = cv2.resize(frame, (iw, ih)).astype(np.float32)
+            img = img.transpose(2, 0, 1)[None]
+            preds = yolox_sess.run(None, {yolox_sess.get_inputs()[0].name: img})[0]
+            if preds.ndim == 3:
+                preds = preds[0]
+            valid = preds[(preds[:, 4] >= 0.5) & (preds[:, 5] == 0)]
+            scale_x = frame.shape[1] / iw
+            scale_y = frame.shape[0] / ih
+            boxes = valid[:, :4].copy()
+            boxes[:, 0] *= scale_x
+            boxes[:, 2] *= scale_x
+            boxes[:, 1] *= scale_y
+            boxes[:, 3] *= scale_y
+            boxes = boxes.astype(int)
+        else:
+            yres = yolo_model(frame, device=0 if torch.cuda.is_available() else "cpu", half=torch.cuda.is_available(), conf=0.5, classes=[0])[0]
+            boxes = yres.boxes.xyxy.cpu().numpy().astype(int)
         if len(boxes) == 0:
             pose_seq.append(np.zeros((33 * 3,), np.float32))
             lh_seq.append(np.zeros((21 * 3,), np.float32))

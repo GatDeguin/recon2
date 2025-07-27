@@ -29,6 +29,16 @@ Los vídeos se fragmentan en **chunks de 16–32 frames** conforme a la estrat
 ### 2.2 Detección de Sujetos (ROI)
 
 Se aplica **YOLOX** exportado a ONNX para extraer bounding boxes de la persona firmante a ≥ 25 FPS, con padding dinámico para incluir manos, torso y rostro .
+Para obtener el modelo ONNX puede utilizar el repositorio oficial de YOLOX:
+
+```bash
+git clone https://github.com/Megvii-BaseDetection/YOLOX
+cd YOLOX
+python tools/export_onnx.py -f exps/example/yolox_s.py -c yolox_s.pth \
+    --output-name yolox_s.onnx --decode-in-inference --dynamic
+```
+
+Coloque `yolox_s.onnx` en `checkpoints/` o indique su ruta con la variable de entorno `YOLOX_ONNX`.
 
 ### 2.3 Extracción de Landmarks y Flujo Óptico
 
@@ -140,3 +150,7 @@ printf "<unk>\n<pad>\n" > vocab.txt
 ```
 
 Si dispone de los pesos reales y un vocabulario entrenado, reemplace estos archivos por los originales.
+
+Si desea usar detección con YOLOX desde `server/app.py`, coloque el modelo
+`yolox_s.onnx` en `checkpoints/` o establezca la variable de entorno
+`YOLOX_ONNX` apuntando al archivo.

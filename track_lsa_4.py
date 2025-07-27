@@ -11,6 +11,12 @@ from tqdm import tqdm
 import mediapipe as mp
 from ultralytics import YOLO
 from optical_flow.raft_runner import compute_optical_flow
+import torch
+
+try:
+    import onnxruntime as ort  # optional, only when using YOLOX
+except Exception:  # pragma: no cover - optional dependency
+    ort = None
 
 
 def box_iou(a, b):
@@ -66,9 +72,23 @@ def infer_active_signer(prev_centers, cur_centers,
 
 def procesar_videos(input_dir, output_file,
                     yolo_conf=0.5, mp_conf=0.7,
-                    show_window=True):
-    # Inicializar YOLOv8 sin args en constructor
-    yolo_model = YOLO('yolov8n.pt')
+                    show_window=True, yolox_model=None):
+    """Procesa los vídeos de *input_dir* almacenando landmarks en *output_file*.
+
+    Si *yolox_model* es una ruta a un modelo YOLOX exportado a ONNX se
+    utilizará dicho modelo para la detección de personas; de lo contrario se
+    empleará YOLOv8 desde ``ultralytics``.
+    """
+
+    yolox_sess = None
+    if yolox_model:
+        if ort is None:
+            raise RuntimeError("onnxruntime no está disponible")
+        providers = ["CUDAExecutionProvider"] if torch.cuda.is_available() else ["CPUExecutionProvider"]
+        yolox_sess = ort.InferenceSession(yolox_model, providers=providers)
+    else:
+        # Inicializar YOLOv8 sin args en constructor
+        yolo_model = YOLO('yolov8n.pt')
     mp_holistic  = mp.solutions.holistic
     mp_face_mesh = mp.solutions.face_mesh
     mp_drawing   = mp.solutions.drawing_utils
@@ -98,10 +118,27 @@ def procesar_videos(input_dir, output_file,
 
             while True:
                 ret, frame = cap.read()
-                if not ret: break
-                # Detección YOLO en GPU en el llamado, no en constructor
-                yres = yolo_model(frame, device=0, half=True, conf=yolo_conf, classes=[0])[0]
-                boxes = yres.boxes.xyxy.cpu().numpy().astype(int)
+                if not ret:
+                    break
+                if yolox_sess is not None:
+                    ih, iw = yolox_sess.get_inputs()[0].shape[2:]
+                    img = cv2.resize(frame, (iw, ih)).astype(np.float32)
+                    img = img.transpose(2, 0, 1)[None]
+                    preds = yolox_sess.run(None, {yolox_sess.get_inputs()[0].name: img})[0]
+                    if preds.ndim == 3:
+                        preds = preds[0]
+                    valid = preds[(preds[:, 4] >= yolo_conf) & (preds[:, 5] == 0)]
+                    scale_x = frame.shape[1] / iw
+                    scale_y = frame.shape[0] / ih
+                    boxes = valid[:, :4].copy()
+                    boxes[:, 0] *= scale_x
+                    boxes[:, 2] *= scale_x
+                    boxes[:, 1] *= scale_y
+                    boxes[:, 3] *= scale_y
+                    boxes = boxes.astype(int)
+                else:
+                    yres = yolo_model(frame, device=0, half=True, conf=yolo_conf, classes=[0])[0]
+                    boxes = yres.boxes.xyxy.cpu().numpy().astype(int)
 
                 # Asignar IDs persistentes
                 cur_ids = [-1]*len(boxes)
@@ -216,5 +253,9 @@ if __name__=='__main__':
     parser.add_argument('--yolo_conf',type=float,default=0.5,help="Conf YOLO")
     parser.add_argument('--mp_conf',type=float,default=0.7,help="Conf MediaPipe")
     parser.add_argument('--no_window',action='store_true',help="Ocultar ventana de visualización")
+    parser.add_argument('--yolox_model',help="Ruta a modelo YOLOX ONNX")
     args=parser.parse_args()
-    procesar_videos(args.input_dir,args.output_file,args.yolo_conf,args.mp_conf,not args.no_window)
+    procesar_videos(args.input_dir,args.output_file,
+                    args.yolo_conf,args.mp_conf,
+                    not args.no_window,
+                    args.yolox_model)
