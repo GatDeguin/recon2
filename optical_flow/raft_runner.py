@@ -45,7 +45,17 @@ def _load_model():
 
 def compute_optical_flow(video_path):
     """Compute dense optical flow sequence for a video using RAFT."""
-    model = _load_model()
+    try:
+        model = _load_model()
+    except RuntimeError as e:
+        if "RAFT repository not found" in str(e):
+            raise RuntimeError(
+                "RAFT repository not found. Set the RAFT_REPO environment variable "
+                "to a local clone of https://github.com/princeton-vl/RAFT or "
+                "download 'raft-sintel.pth' from the RAFT releases page and set "
+                "RAFT_CKPT to its location."
+            ) from e
+        raise
     cap = cv2.VideoCapture(video_path)
     ret, prev = cap.read()
     if not ret:
