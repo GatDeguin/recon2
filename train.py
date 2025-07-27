@@ -17,6 +17,8 @@ class SignDataset(Dataset):
         self.h5 = h5py.File(h5_path, 'r')
         df = pd.read_csv(csv_path, sep=';')
         label_map = {str(r['id']): str(r['label']) for _, r in df.iterrows()}
+        nmm_map = {str(r['id']): str(r.get('nmm', 'none')) for _, r in df.iterrows()} if 'nmm' in df.columns else {}
+        suf_map = {str(r['id']): str(r.get('suffix', 'none')) for _, r in df.iterrows()} if 'suffix' in df.columns else {}
         self.domain_map = {}
         if domain_csv:
             dom = pd.read_csv(domain_csv, sep=';')
@@ -26,23 +28,32 @@ class SignDataset(Dataset):
             base = os.path.splitext(vid)[0]
             if base in label_map:
                 domain = self.domain_map.get(base, 0)
-                self.samples.append((vid, label_map[base], domain))
+                nmm = nmm_map.get(base, 'none') if nmm_map else 'none'
+                suf = suf_map.get(base, 'none') if suf_map else 'none'
+                self.samples.append((vid, label_map[base], domain, nmm, suf))
         self.vocab = self._build_vocab()
-        self.num_domains = len(set(d for _, _, d in self.samples)) or 1
+        self.nmm_vocab = self._build_map([s[3] for s in self.samples])
+        self.suffix_vocab = self._build_map([s[4] for s in self.samples])
+        self.num_domains = len(set(s[2] for s in self.samples)) or 1
 
     def _build_vocab(self):
         tokens = set()
-        for _, lbl in self.samples:
-            tokens.update(lbl.split())
+        for s in self.samples:
+            tokens.update(s[1].split())
         vocab = {tok: i+1 for i, tok in enumerate(sorted(tokens))}
         vocab['<blank>'] = 0
         return vocab
+
+    @staticmethod
+    def _build_map(items):
+        uniq = sorted(set(items))
+        return {v: i for i, v in enumerate(uniq)}
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        vid, lbl, domain = self.samples[idx]
+        vid, lbl, domain, nmm, suf = self.samples[idx]
         g = self.h5[vid]
         pose = g['pose'][:].reshape(-1, 33, 3)
         lh = g['left_hand'][:].reshape(-1, 21, 3)
@@ -57,20 +68,13 @@ class SignDataset(Dataset):
         x = torch.from_numpy(nodes).permute(2,0,1).float()  # (C,T,V)
         tokens = [self.vocab[t] for t in lbl.split() if t in self.vocab]
         y = torch.tensor(tokens, dtype=torch.long)
-        return x, y, domain
+        nmm_id = self.nmm_vocab[nmm]
+        suf_id = self.suffix_vocab[suf]
+        return x, y, domain, nmm_id, suf_id
 
 def collate(batch):
-    """Pad secuencias y empaquetar dominios opcionalmente.
-
-    El tensor de etiquetas resultante tiene forma ``(B, L)`` y debe
-    aplanarse (`flatten`) junto con ``label_lengths`` antes de pasar a
-    ``nn.CTCLoss``.
-    """
-    if len(batch[0]) == 3:
-        feats, labels, domains = zip(*batch)
-    else:
-        feats, labels = zip(*batch)
-        domains = None
+    """Pad secuencias y empaquetar dominios y labels auxiliares."""
+    feats, labels, domains, nmms, sufs = zip(*batch)
     T = max(f.shape[1] for f in feats)
     V = feats[0].shape[2]
     C = feats[0].shape[0]
@@ -93,21 +97,33 @@ def collate(batch):
             l = torch.cat([l, pad])
         padded_labels.append(l)
     padded_labels = torch.stack(padded_labels)
-    if domains is not None:
-        doms = torch.tensor(domains, dtype=torch.long)
-        return padded_feats, padded_labels, torch.tensor(feat_lengths), torch.tensor(label_lengths), doms
-    return padded_feats, padded_labels, torch.tensor(feat_lengths), torch.tensor(label_lengths)
+    doms = torch.tensor(domains, dtype=torch.long)
+    nmm_t = torch.tensor(nmms, dtype=torch.long)
+    suf_t = torch.tensor(sufs, dtype=torch.long)
+    return padded_feats, padded_labels, torch.tensor(feat_lengths), torch.tensor(label_lengths), doms, nmm_t, suf_t
 
-def build_model(name: str, num_classes: int) -> nn.Module:
+def _contrastive(feats: torch.Tensor) -> torch.Tensor:
+    """Simple NT-Xent style loss over batch-averaged features."""
+    f = feats.mean(dim=1)
+    f = nn.functional.normalize(f, dim=1)
+    sim = torch.matmul(f, f.t()) / 0.1
+    labels = torch.arange(f.size(0), device=f.device)
+    return nn.functional.cross_entropy(sim, labels)
+
+def build_model(name: str, num_classes: int, num_nmm: int = 0, num_suffix: int = 0) -> nn.Module:
     """Create the selected model."""
     if name == 'stgcn':
-        return STGCN(in_channels=3, num_class=num_classes, num_nodes=544)
+        return STGCN(in_channels=3, num_class=num_classes, num_nodes=544,
+                     num_nmm=num_nmm, num_suffix=num_suffix)
     if name == 'sttn':
-        return STTN(in_channels=3, num_class=num_classes, num_nodes=544)
+        return STTN(in_channels=3, num_class=num_classes, num_nodes=544,
+                    num_nmm=num_nmm, num_suffix=num_suffix)
     if name == 'corrnet+':
-        return CorrNetPlus(in_channels=3, num_class=num_classes, num_nodes=544)
+        return CorrNetPlus(in_channels=3, num_class=num_classes, num_nodes=544,
+                           num_nmm=num_nmm, num_suffix=num_suffix)
     if name == 'mcst':
-        return MCSTTransformer(in_channels=3, num_class=num_classes, num_nodes=544)
+        return MCSTTransformer(in_channels=3, num_class=num_classes, num_nodes=544,
+                               num_nmm=num_nmm, num_suffix=num_suffix)
     raise ValueError(f'Unknown model: {name}')
 
 
@@ -115,9 +131,10 @@ def train(args):
     ds = SignDataset(args.h5_file, args.csv_file, args.domain_labels)
     dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = build_model(args.model, len(ds.vocab))
+    model = build_model(args.model, len(ds.vocab), len(ds.nmm_vocab), len(ds.suffix_vocab))
     model.to(device)
     criterion = nn.CTCLoss(blank=0, zero_infinity=True)
+    ce_loss = nn.CrossEntropyLoss()
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
     if args.domain_labels:
         from dann import DomainDiscriminator, grad_reverse
@@ -133,19 +150,19 @@ def train(args):
         model.train()
         epoch_loss = 0.0
         for batch in dl:
-            if args.domain_labels:
-                feats, labels, feat_lens, label_lens, domains = batch
-                domains = domains.to(device)
-            else:
-                feats, labels, feat_lens, label_lens = batch
+            feats, labels, feat_lens, label_lens, domains, nmm_lbls, suf_lbls = batch
+            domains = domains.to(device)
             feats = feats.to(device)
             labels = labels.to(device)
+            nmm_lbls = nmm_lbls.to(device)
+            suf_lbls = suf_lbls.to(device)
             feat_lens = feat_lens.to(device)
             label_lens = label_lens.to(device)
-            if args.domain_labels:
-                outputs, feats_emb = model(feats, return_features=True)
+            return_feat = args.domain_labels or args.contrastive
+            if return_feat:
+                (outputs, nmm_logits, suf_logits), feats_emb = model(feats, return_features=True)
             else:
-                outputs = model(feats)
+                outputs, nmm_logits, suf_logits = model(feats)
             outputs = outputs.permute(1, 0, 2)  # T,B,C
             # nn.CTCLoss requiere que todas las etiquetas estén
             # concatenadas en un solo vector y se pasen sus longitudes
@@ -153,11 +170,18 @@ def train(args):
             # el entrenamiento.
             targets = labels.flatten()
             loss = criterion(outputs, targets, feat_lens, label_lens)
+            if nmm_logits is not None:
+                loss = loss + ce_loss(nmm_logits, nmm_lbls)
+            if suf_logits is not None:
+                loss = loss + ce_loss(suf_logits, suf_lbls)
             if args.domain_labels:
                 dom_feat = feats_emb.mean(dim=1)
                 dom_logits = disc(grad_reverse(dom_feat))
                 adv_loss = adv_criterion(dom_logits, domains)
                 loss = loss + 0.1 * adv_loss
+            if args.contrastive:
+                cont = _contrastive(feats_emb)
+                loss = loss + 0.1 * cont
             optim.zero_grad()
             if disc_optim:
                 disc_optim.zero_grad()
@@ -182,5 +206,6 @@ if __name__ == '__main__':
     p.add_argument('--batch_size', type=int, default=4)
     p.add_argument('--model', type=str, default='stgcn', choices=['stgcn', 'sttn', 'corrnet+', 'mcst'], help='Model architecture')
     p.add_argument('--domain_labels', help='CSV con etiquetas de dominio opcional')
+    p.add_argument('--contrastive', action='store_true', help='Use contrastive loss')
     args = p.parse_args()
     train(args)
