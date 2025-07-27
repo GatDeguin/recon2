@@ -52,14 +52,18 @@ class MCSTBlock(nn.Module):
 
 
 class MCSTTransformer(nn.Module):
-    """Multi-Scale Channel Spatio-Temporal Transformer."""
+    """Multi-Scale Channel Spatio-Temporal Transformer with multitask heads."""
 
-    def __init__(self, in_channels: int, num_class: int, num_nodes: int, num_layers: int = 2, embed_dim: int = 128):
+    def __init__(self, in_channels: int, num_class: int, num_nodes: int,
+                 num_layers: int = 2, embed_dim: int = 128,
+                 num_nmm: int = 0, num_suffix: int = 0):
         super().__init__()
         self.input_proj = nn.Conv2d(in_channels, embed_dim, kernel_size=1)
         self.layers = nn.ModuleList([MCSTBlock(embed_dim) for _ in range(num_layers)])
         self.pool = nn.AdaptiveAvgPool2d((None, 1))
-        self.fc = nn.Linear(embed_dim, num_class)
+        self.ctc_head = nn.Linear(embed_dim, num_class)
+        self.nmm_head = nn.Linear(embed_dim, num_nmm) if num_nmm > 0 else None
+        self.suffix_head = nn.Linear(embed_dim, num_suffix) if num_suffix > 0 else None
 
     def forward(self, x: torch.Tensor, return_features: bool = False) -> torch.Tensor:
         # x: (N, C, T, V)
@@ -68,8 +72,11 @@ class MCSTTransformer(nn.Module):
             x = layer(x)
         x = self.pool(x)  # (N, C, T, 1)
         feat = x.squeeze(-1).permute(0, 2, 1)
-        out = self.fc(feat)
-        log_probs = out.log_softmax(-1)
+        gloss = self.ctc_head(feat).log_softmax(-1)
+        pooled = feat.mean(dim=1)
+        nmm = self.nmm_head(pooled) if self.nmm_head else None
+        suffix = self.suffix_head(pooled) if self.suffix_head else None
+        outputs = (gloss, nmm, suffix)
         if return_features:
-            return log_probs, feat
-        return log_probs
+            return outputs, feat
+        return outputs

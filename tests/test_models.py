@@ -3,10 +3,12 @@ from train import build_model
 
 
 def _run_forward(name: str):
-    model = build_model(name, num_classes=5)
+    model = build_model(name, num_classes=5, num_nmm=2, num_suffix=3)
     inp = torch.randn(2, 3, 4, 544)
-    out = model(inp)
-    assert out.shape == (2, 4, 5)
+    gloss, nmm, suf = model(inp)
+    assert gloss.shape == (2, 4, 5)
+    assert nmm.shape == (2, 2)
+    assert suf.shape == (2, 3)
 
 
 def test_stgcn_forward():

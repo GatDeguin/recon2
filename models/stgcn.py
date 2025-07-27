@@ -36,7 +36,9 @@ class STGCNBlock(nn.Module):
         return self.relu(x)
 
 class STGCN(nn.Module):
-    def __init__(self, in_channels, num_class, num_nodes):
+    def __init__(self, in_channels, num_class, num_nodes, num_nmm: int = 0,
+                 num_suffix: int = 0):
+        """Spatial Temporal GCN with optional multitask heads."""
         super().__init__()
         A = np.eye(num_nodes, dtype=np.float32)
         self.data_bn = nn.BatchNorm1d(num_nodes * in_channels)
@@ -45,7 +47,9 @@ class STGCN(nn.Module):
         self.layer3 = STGCNBlock(64, 64, A)
         self.layer4 = STGCNBlock(64, 128, A)
         self.pool = nn.AdaptiveAvgPool2d((None,1))
-        self.fc = nn.Linear(128, num_class)
+        self.ctc_head = nn.Linear(128, num_class)
+        self.nmm_head = nn.Linear(128, num_nmm) if num_nmm > 0 else None
+        self.suffix_head = nn.Linear(128, num_suffix) if num_suffix > 0 else None
 
     def forward(self, x, return_features: bool = False):
         """Propagaci\u00f3n forward con opci\u00f3n de extraer features."""
@@ -60,8 +64,11 @@ class STGCN(nn.Module):
         x = self.layer4(x)
         x = self.pool(x)  # (N, C, T, 1)
         feat = x.squeeze(-1).permute(0, 2, 1)  # (N, T, C)
-        out = self.fc(feat)
-        log_probs = out.log_softmax(-1)
+        gloss = self.ctc_head(feat).log_softmax(-1)
+        pooled = feat.mean(dim=1)
+        nmm = self.nmm_head(pooled) if self.nmm_head else None
+        suffix = self.suffix_head(pooled) if self.suffix_head else None
+        outputs = (gloss, nmm, suffix)
         if return_features:
-            return log_probs, feat
-        return log_probs
+            return outputs, feat
+        return outputs
