@@ -16,4 +16,6 @@ git+https://github.com/princeton-vl/RAFT.git
 # Backend API
 fastapi
 uvicorn[standard]
+grpcio
+protobuf
 

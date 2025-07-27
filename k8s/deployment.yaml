@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recon-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recon-server
+  template:
+    metadata:
+      labels:
+        app: recon-server
+    spec:
+      containers:
+      - name: server
+        image: recon-server:latest
+        ports:
+        - containerPort: 8000
+        - containerPort: 50051
+        resources:
+          requests:
+            cpu: "250m"
+          limits:
+            cpu: "1"
+
