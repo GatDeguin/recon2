@@ -39,6 +39,23 @@ class SignDataset(Dataset):
         self.suffix_vocab = self._build_map([s[4] for s in self.samples])
         self.num_domains = len(set(s[2] for s in self.samples)) or 1
 
+    def close(self):
+        """Close the underlying HDF5 file if open."""
+        if getattr(self, "h5", None) is not None:
+            try:
+                self.h5.close()
+            finally:
+                self.h5 = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
     def _build_vocab(self):
         tokens = set()
         for s in self.samples:
@@ -171,83 +188,83 @@ def evaluate(model: nn.Module, dl: DataLoader, inv_vocab: dict, device: torch.de
 
 
 def train(args):
-    ds = SignDataset(args.h5_file, args.csv_file, args.domain_labels)
-    dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = build_model(args.model, len(ds.vocab), len(ds.nmm_vocab), len(ds.suffix_vocab))
-    model.to(device)
-    criterion = nn.CTCLoss(blank=0, zero_infinity=True)
-    ce_loss = nn.CrossEntropyLoss()
-    optim = torch.optim.Adam(model.parameters(), lr=1e-3)
-    if args.domain_labels:
-        from dann import DomainDiscriminator, grad_reverse
-        disc = DomainDiscriminator(128, ds.num_domains)
-        disc.to(device)
-        disc_optim = torch.optim.Adam(disc.parameters(), lr=1e-3)
-        adv_criterion = nn.CrossEntropyLoss()
-    else:
-        disc = disc_optim = adv_criterion = None
-    os.makedirs('checkpoints', exist_ok=True)
-    logger = MetricsLogger(os.path.join('logs', 'metrics.db'))
+    with SignDataset(args.h5_file, args.csv_file, args.domain_labels) as ds:
+        dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = build_model(args.model, len(ds.vocab), len(ds.nmm_vocab), len(ds.suffix_vocab))
+        model.to(device)
+        criterion = nn.CTCLoss(blank=0, zero_infinity=True)
+        ce_loss = nn.CrossEntropyLoss()
+        optim = torch.optim.Adam(model.parameters(), lr=1e-3)
+        if args.domain_labels:
+            from dann import DomainDiscriminator, grad_reverse
+            disc = DomainDiscriminator(128, ds.num_domains)
+            disc.to(device)
+            disc_optim = torch.optim.Adam(disc.parameters(), lr=1e-3)
+            adv_criterion = nn.CrossEntropyLoss()
+        else:
+            disc = disc_optim = adv_criterion = None
+        os.makedirs('checkpoints', exist_ok=True)
+        logger = MetricsLogger(os.path.join('logs', 'metrics.db'))
 
-    inv_vocab = {v: k for k, v in ds.vocab.items()}
+        inv_vocab = {v: k for k, v in ds.vocab.items()}
 
-    for epoch in range(args.epochs):
-        model.train()
-        epoch_loss = 0.0
-        for batch in dl:
-            feats, labels, feat_lens, label_lens, domains, nmm_lbls, suf_lbls = batch
-            domains = domains.to(device)
-            feats = feats.to(device)
-            labels = labels.to(device)
-            nmm_lbls = nmm_lbls.to(device)
-            suf_lbls = suf_lbls.to(device)
-            feat_lens = feat_lens.to(device)
-            label_lens = label_lens.to(device)
-            return_feat = args.domain_labels or args.contrastive
-            if return_feat:
-                (outputs, nmm_logits, suf_logits), feats_emb = model(feats, return_features=True)
-            else:
-                outputs, nmm_logits, suf_logits = model(feats)
-            outputs = outputs.permute(1, 0, 2)  # T,B,C
-            # nn.CTCLoss requiere que todas las etiquetas estén
-            # concatenadas en un solo vector y se pasen sus longitudes
-            # originales. No quitar flatten() ni label_lens al extender
-            # el entrenamiento.
-            targets = labels.flatten()
-            loss = criterion(outputs, targets, feat_lens, label_lens)
-            if nmm_logits is not None:
-                loss = loss + ce_loss(nmm_logits, nmm_lbls)
-            if suf_logits is not None:
-                loss = loss + ce_loss(suf_logits, suf_lbls)
-            if args.domain_labels:
-                dom_feat = feats_emb.mean(dim=1)
-                dom_logits = disc(grad_reverse(dom_feat))
-                adv_loss = adv_criterion(dom_logits, domains)
-                loss = loss + 0.1 * adv_loss
-            if args.contrastive:
-                cont = _contrastive(feats_emb)
-                loss = loss + 0.1 * cont
-            optim.zero_grad()
-            if disc_optim:
-                disc_optim.zero_grad()
-            loss.backward()
-            optim.step()
-            if disc_optim:
-                disc_optim.step()
-            epoch_loss += loss.item()
-        avg = epoch_loss / len(dl)
-        print(f"Epoch {epoch+1}: loss {avg:.4f}")
-        torch.save({
-            'model_state': model.state_dict(),
-            'optimizer_state': optim.state_dict(),
-            'vocab': ds.vocab
-        }, f'checkpoints/epoch_{epoch+1}.pt')
+        for epoch in range(args.epochs):
+            model.train()
+            epoch_loss = 0.0
+            for batch in dl:
+                feats, labels, feat_lens, label_lens, domains, nmm_lbls, suf_lbls = batch
+                domains = domains.to(device)
+                feats = feats.to(device)
+                labels = labels.to(device)
+                nmm_lbls = nmm_lbls.to(device)
+                suf_lbls = suf_lbls.to(device)
+                feat_lens = feat_lens.to(device)
+                label_lens = label_lens.to(device)
+                return_feat = args.domain_labels or args.contrastive
+                if return_feat:
+                    (outputs, nmm_logits, suf_logits), feats_emb = model(feats, return_features=True)
+                else:
+                    outputs, nmm_logits, suf_logits = model(feats)
+                outputs = outputs.permute(1, 0, 2)  # T,B,C
+                # nn.CTCLoss requiere que todas las etiquetas estén
+                # concatenadas en un solo vector y se pasen sus longitudes
+                # originales. No quitar flatten() ni label_lens al extender
+                # el entrenamiento.
+                targets = labels.flatten()
+                loss = criterion(outputs, targets, feat_lens, label_lens)
+                if nmm_logits is not None:
+                    loss = loss + ce_loss(nmm_logits, nmm_lbls)
+                if suf_logits is not None:
+                    loss = loss + ce_loss(suf_logits, suf_lbls)
+                if args.domain_labels:
+                    dom_feat = feats_emb.mean(dim=1)
+                    dom_logits = disc(grad_reverse(dom_feat))
+                    adv_loss = adv_criterion(dom_logits, domains)
+                    loss = loss + 0.1 * adv_loss
+                if args.contrastive:
+                    cont = _contrastive(feats_emb)
+                    loss = loss + 0.1 * cont
+                optim.zero_grad()
+                if disc_optim:
+                    disc_optim.zero_grad()
+                loss.backward()
+                optim.step()
+                if disc_optim:
+                    disc_optim.step()
+                epoch_loss += loss.item()
+            avg = epoch_loss / len(dl)
+            print(f"Epoch {epoch+1}: loss {avg:.4f}")
+            torch.save({
+                'model_state': model.state_dict(),
+                'optimizer_state': optim.state_dict(),
+                'vocab': ds.vocab
+            }, f'checkpoints/epoch_{epoch+1}.pt')
 
-        wer_val, nmm_acc = evaluate(model, dl, inv_vocab, device)
-        logger.log(wer=wer_val, nmm_acc=nmm_acc)
+            wer_val, nmm_acc = evaluate(model, dl, inv_vocab, device)
+            logger.log(wer=wer_val, nmm_acc=nmm_acc)
 
-    logger.close()
+        logger.close()
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description='Train sign language models with CTC loss')

@@ -67,23 +67,23 @@ def main() -> None:
     p.add_argument("--log_file", help="CSV con registros de producción")
     args = p.parse_args()
 
-    ds = SignDataset(args.h5_file, args.csv_file)
-    dl = DataLoader(ds, batch_size=1, shuffle=False, collate_fn=collate)
+    with SignDataset(args.h5_file, args.csv_file) as ds:
+        dl = DataLoader(ds, batch_size=1, shuffle=False, collate_fn=collate)
 
-    ckpt = torch.load(args.checkpoint, map_location="cpu")
-    if isinstance(ckpt, dict):
-        model = build_model("stgcn", len(ds.vocab))
-        model.load_state_dict(ckpt["model_state"])
-    else:
-        model = ckpt
-    model.eval()
+        ckpt = torch.load(args.checkpoint, map_location="cpu")
+        if isinstance(ckpt, dict):
+            model = build_model("stgcn", len(ds.vocab))
+            model.load_state_dict(ckpt["model_state"])
+        else:
+            model = ckpt
+        model.eval()
 
-    if args.log_file and os.path.exists(args.log_file):
-        paths = load_production_samples(args.log_file, args.top_k)
-        copy_videos(paths, os.path.join(args.out_dir, "videos"))
-    else:
-        scores = compute_scores(model, dl)
-        save_selected(scores, ds, args.out_dir, args.top_k)
+        if args.log_file and os.path.exists(args.log_file):
+            paths = load_production_samples(args.log_file, args.top_k)
+            copy_videos(paths, os.path.join(args.out_dir, "videos"))
+        else:
+            scores = compute_scores(model, dl)
+            save_selected(scores, ds, args.out_dir, args.top_k)
 
 
 if __name__ == "__main__":
