@@ -68,12 +68,30 @@ def _close_logger() -> None:
     """Ensure metrics database is closed on shutdown."""
     logger.close()
 
-# Cargar modelo TorchScript u ONNX
-try:
-    model = torch.jit.load("checkpoints/model.ts")
-    model.eval()
-except Exception:
-    model = None
+# Selección de backend: cpu, cuda u onnx
+BACKEND = os.environ.get("BACKEND", "cpu").lower()
+ONNX_PATH = os.environ.get("ONNX_MODEL", "checkpoints/model.onnx")
+
+model = None
+onnx_sess = None
+device = "cpu"
+
+if BACKEND == "onnx":
+    if ort is not None:
+        providers = ["CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"]
+        try:
+            onnx_sess = ort.InferenceSession(ONNX_PATH, providers=providers)
+        except Exception:
+            onnx_sess = None
+    else:
+        onnx_sess = None
+else:
+    device = "cuda" if BACKEND == "cuda" and torch.cuda.is_available() else "cpu"
+    try:
+        model = torch.jit.load("checkpoints/model.ts", map_location=device)
+        model.eval()
+    except Exception:
+        model = None
 
 # Cargar vocabulario si existe
 vocab = {}
@@ -259,16 +277,33 @@ def _extract_features(path: str) -> torch.Tensor:
     return torch.from_numpy(nodes).permute(2, 0, 1).float().unsqueeze(0)
 
 
+def _pad_batch(feats_list: list[torch.Tensor]) -> torch.Tensor:
+    """Pad a list of feature tensors along the time dimension."""
+    T = max(f.shape[2] for f in feats_list)
+    B = len(feats_list)
+    C = feats_list[0].shape[1]
+    V = feats_list[0].shape[3]
+    batch = torch.zeros(B, C, T, V)
+    for i, f in enumerate(feats_list):
+        t = f.shape[2]
+        batch[i, :, :t] = f[0]
+    return batch
+
+
 if GRPC_AVAILABLE:
     class TranscriberService(transcriber_pb2_grpc.TranscriberServicer):
         def Transcribe(self, request, context):
             feats = extract_features_from_bytes(request.video)
-            if model is None:
-                transcript = ""
-            else:
-                with torch.no_grad():
-                    logits = model(feats)
+            if onnx_sess is not None:
+                out = onnx_sess.run(None, {onnx_sess.get_inputs()[0].name: feats.numpy()})[0]
+                logits = torch.from_numpy(out)
                 transcript = decode(logits)
+            elif model is not None:
+                with torch.no_grad():
+                    logits = model(feats.to(device))
+                transcript = decode(logits.cpu())
+            else:
+                transcript = ""
             return transcriber_pb2.TranscriptReply(transcript=transcript)
 
 
@@ -287,36 +322,53 @@ if GRPC_AVAILABLE:
         return t
 
 @app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)):
-    data = await file.read()
-    uid = uuid.uuid4().hex
-    video_path = os.path.join("logs", "videos", f"{uid}.mp4")
-    with open(video_path, "wb") as f:
-        f.write(data)
+async def transcribe(files: list[UploadFile] = File(...)):
+    feats_list = []
+    video_paths = []
+    for file in files:
+        data = await file.read()
+        uid = uuid.uuid4().hex
+        video_path = os.path.join("logs", "videos", f"{uid}.mp4")
+        with open(video_path, "wb") as f:
+            f.write(data)
+        video_paths.append(video_path)
 
-    start = time.time()
-    feats = extract_features_from_bytes(data)
-    latency = time.time() - start
-    fps = feats.shape[2] / latency if latency > 0 else 0.0
+        start = time.time()
+        feats_list.append(extract_features_from_bytes(data))
+        latency = time.time() - start
+        fps = feats_list[-1].shape[2] / latency if latency > 0 else 0.0
+        logger.log(latency=latency, fps=fps)
 
-    if model is None:
-        transcript = ""
-        conf = 0.0
-    else:
+    batch = _pad_batch(feats_list)
+
+    transcripts = []
+    confs = []
+    if onnx_sess is not None:
+        outputs = onnx_sess.run(None, {onnx_sess.get_inputs()[0].name: batch.numpy()})[0]
+        for logit in outputs:
+            t = torch.from_numpy(logit).unsqueeze(0)
+            transcripts.append(decode(t))
+            confs.append(torch.softmax(t, dim=-1).max(-1).values.mean().item())
+    elif model is not None:
         with torch.no_grad():
-            logits = model(feats)
-        transcript = decode(logits)
-        conf = torch.softmax(logits, dim=-1).max(-1).values.mean().item()
+            logits = model(batch.to(device))
+        for logit in logits:
+            l = logit.unsqueeze(0).cpu()
+            transcripts.append(decode(l))
+            confs.append(torch.softmax(l, dim=-1).max(-1).values.mean().item())
+    else:
+        transcripts = ["" for _ in feats_list]
+        confs = [0.0 for _ in feats_list]
 
-    logger.log(latency=latency, fps=fps)
     log_path = os.path.join("logs", "predictions.csv")
     header = not os.path.exists(log_path)
     with open(log_path, "a", encoding="utf-8") as lf:
         if header:
             lf.write("video_path,confidence\n")
-        lf.write(f"{video_path},{conf}\n")
+        for p, c in zip(video_paths, confs):
+            lf.write(f"{p},{c}\n")
 
-    return {"transcript": transcript}
+    return {"transcripts": transcripts}
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
@@ -329,12 +381,16 @@ async def websocket_endpoint(ws: WebSocket):
             latency = time.time() - start
             fps = feats.shape[2] / latency if latency > 0 else 0.0
 
-            if model is None:
-                transcript = ""
-            else:
-                with torch.no_grad():
-                    logits = model(feats)
+            if onnx_sess is not None:
+                out = onnx_sess.run(None, {onnx_sess.get_inputs()[0].name: feats.numpy()})[0]
+                logits = torch.from_numpy(out)
                 transcript = decode(logits)
+            elif model is not None:
+                with torch.no_grad():
+                    logits = model(feats.to(device))
+                transcript = decode(logits.cpu())
+            else:
+                transcript = ""
 
             logger.log(latency=latency, fps=fps)
             await ws.send_json({"transcript": transcript})
