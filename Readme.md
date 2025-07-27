@@ -117,6 +117,7 @@ Un cliente React/WebSocket captura la webcam o stream, envía chunks al servidor
 ### 6.3 Mantenimiento y Aprendizaje Continuo
 
 Se monitorizan métricas clave (WER, precisión de RNM, latencia, FPS) y se orquesta un pipeline de **active learning** semanal con ejemplos de baja confianza capturados en producción, permitiendo reentrenamientos periódicos .
+Las métricas se almacenan automáticamente en `logs/metrics.db` para su visualización posterior.
 
 ---
 
