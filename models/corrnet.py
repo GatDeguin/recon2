@@ -20,11 +20,11 @@ class CorrNet(nn.Module):
 class CorrNetPlus(nn.Module):
     """ST-GCN encoder enhanced with temporal correlation attention."""
     def __init__(self, in_channels: int, num_class: int, num_nodes: int,
-                 num_nmm: int = 0, num_suffix: int = 0):
+                 num_nmm: int = 0, num_suffix: int = 0, num_rnm: int = 0):
         super().__init__()
         self.corr = CorrNet(in_channels)
         self.encoder = STGCN(in_channels, num_class, num_nodes,
-                             num_nmm=num_nmm, num_suffix=num_suffix)
+                             num_nmm=num_nmm, num_suffix=num_suffix, num_rnm=num_rnm)
 
     def forward(self, x: torch.Tensor, return_features: bool = False) -> torch.Tensor:
         # x: (N, C, T, V)

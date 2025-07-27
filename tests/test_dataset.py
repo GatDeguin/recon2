@@ -18,6 +18,7 @@ def _create_data(h5_path, csv_path):
         "label": ["hello world"],
         "nmm": ["neutral"],
         "suffix": ["none"],
+        "rnm": ["r1"],
     }).to_csv(csv_path, sep=";", index=False)
 
 
@@ -27,12 +28,13 @@ def test_dataset_loading(tmp_path):
     _create_data(h5_file, csv_file)
     with SignDataset(str(h5_file), str(csv_file)) as ds:
         assert len(ds) == 1
-        x, y, d, nmm, suf = ds[0]
+        x, y, d, nmm, suf, rnm = ds[0]
         assert x.shape == (3, 2, 544)
         assert d == 0
         assert y.tolist() == [ds.vocab["hello"], ds.vocab["world"]]
         assert nmm == ds.nmm_vocab["neutral"]
         assert suf == ds.suffix_vocab["none"]
+        assert rnm == ds.rnm_vocab["r1"]
 
 
 def test_collate(tmp_path):
@@ -41,10 +43,11 @@ def test_collate(tmp_path):
     _create_data(h5_file, csv_file)
     with SignDataset(str(h5_file), str(csv_file)) as ds:
         batch = [ds[0], ds[0]]
-        feats, labels, feat_lens, label_lens, domains, nmms, sufs = collate(batch)
+        feats, labels, feat_lens, label_lens, domains, nmms, sufs, rnms = collate(batch)
         assert feats.shape[0] == 2
         assert feat_lens.tolist() == [2, 2]
         assert label_lens.tolist() == [2, 2]
         assert domains.tolist() == [0, 0]
         assert (nmms == ds.nmm_vocab["neutral"]).all()
         assert (sufs == ds.suffix_vocab["none"]).all()
+        assert (rnms == ds.rnm_vocab["r1"]).all()

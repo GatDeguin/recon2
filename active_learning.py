@@ -17,9 +17,10 @@ def compute_scores(model: torch.nn.Module, loader: DataLoader) -> List[Tuple[str
     scores = []
     model.eval()
     with torch.no_grad():
-        for idx, (feats, labels, feat_lens, label_lens) in enumerate(loader):
+        for idx, (feats, labels, feat_lens, label_lens, *_) in enumerate(loader):
             feats = feats.to(device)
-            out = model(feats)
+            gloss, *_ = model(feats)
+            out = gloss
             conf = out.exp().max(-1).values.mean().item()
             vid = loader.dataset.samples[idx][0]
             scores.append((vid, conf))
