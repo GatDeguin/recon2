@@ -118,6 +118,13 @@ python export_onnx.py --checkpoint ckpt.pt --arch stgcn --output model.onnx
 
 Genera `model.onnx_int8.onnx` ya cuantizado y verifica una inferencia con `onnxruntime`.
 Se genera además una versión “lite” mediante **Knowledge Distillation**, reduciendo parámetros en un 50 % con alta precisión para dispositivos móviles .
+Para entrenarla ejecute:
+```bash
+python distill.py --h5_file datos.h5 --csv_file labels.csv \
+  --teacher_ckpt checkpoints/epoch_10.pt --model stgcn
+```
+El script guarda el checkpoint reducido en `checkpoints/` y reporta WER y
+precisión de NMM comparando alumno y profesor.
 
 ---
 
