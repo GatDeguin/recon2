@@ -154,3 +154,12 @@ Si dispone de los pesos reales y un vocabulario entrenado, reemplace estos archi
 Si desea usar detección con YOLOX desde `server/app.py`, coloque el modelo
 `yolox_s.onnx` en `checkpoints/` o establezca la variable de entorno
 `YOLOX_ONNX` apuntando al archivo.
+
+Para seleccionar el backend de inferencia del reconocedor se puede definir la
+variable `BACKEND` con los valores `cpu`, `cuda` u `onnx`. Con `cpu` o `cuda`
+se cargará `checkpoints/model.ts` con PyTorch en el dispositivo indicado. Si se
+elige `onnx` se cargará `checkpoints/model.onnx` (o la ruta indicada en
+`ONNX_MODEL`) usando `onnxruntime`.
+
+El endpoint `/transcribe` ahora acepta varios archivos en la clave `files` y
+devuelve una lista de transcripciones en el mismo orden.
