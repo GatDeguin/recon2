@@ -9,6 +9,17 @@ Se parte de **LSA‑T**, un corpus continuo de LSA con 14 880 vídeos de oraci
 Se añade **LSA64**, compuesto por 3 200 clips de señas aisladas para pre‑entrenamiento controlado .
 Para robustez cross‑lingual, se incorporan **PHOENIX‑Weather‑2014T** y **CoL‑SLTD** en fases iniciales de pre‑entrenamiento .
 
+Para descargar y normalizar automáticamente estos corpora se incluye el script
+`data/download.py`:
+
+```bash
+python data/download.py <corpus> DEST --username USER --password PASS
+```
+
+`<corpus>` puede ser `lsa_t`, `lsa64`, `phoenix` o `col-sltd`. El script
+verifica la suma SHA‑256, extrae los archivos y coloca los vídeos en
+`DEST/videos` y las anotaciones en `DEST/meta.csv`.
+
 ### 1.2 Esquema de Anotación Multitarea
 
 Cada clip se enriquece con:
