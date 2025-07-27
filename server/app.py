@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect
 import uvicorn
+from typing import Optional
+import threading
 import torch
 import tempfile
 import numpy as np
@@ -12,6 +14,16 @@ import uuid
 import time
 
 from metrics import MetricsLogger
+
+# Optional gRPC support
+try:
+    import grpc
+    from concurrent import futures
+    from server.protos import transcriber_pb2, transcriber_pb2_grpc
+    GRPC_AVAILABLE = True
+except Exception:  # pragma: no cover - optional dependency
+    GRPC_AVAILABLE = False
+    grpc = None
 
 # Inicializar modelos globales una sola vez
 mp_holistic = mp.solutions.holistic
@@ -139,7 +151,36 @@ def _extract_features(path: str) -> torch.Tensor:
         flow_node = np.pad(flow_node, ((0, nodes.shape[0] - flow_node.shape[0]), (0, 0)))
     nodes = np.concatenate([nodes, flow_node[:, None, :]], axis=1)
 
+
     return torch.from_numpy(nodes).permute(2, 0, 1).float().unsqueeze(0)
+
+
+if GRPC_AVAILABLE:
+    class TranscriberService(transcriber_pb2_grpc.TranscriberServicer):
+        def Transcribe(self, request, context):
+            feats = extract_features_from_bytes(request.video)
+            if model is None:
+                transcript = ""
+            else:
+                with torch.no_grad():
+                    logits = model(feats)
+                transcript = decode(logits)
+            return transcriber_pb2.TranscriptReply(transcript=transcript)
+
+
+    def start_grpc_server(port: int = 50051) -> threading.Thread:
+        def _serve() -> None:
+            server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
+            transcriber_pb2_grpc.add_TranscriberServicer_to_server(
+                TranscriberService(), server
+            )
+            server.add_insecure_port(f"[::]:{port}")
+            server.start()
+            server.wait_for_termination()
+
+        t = threading.Thread(target=_serve, daemon=True)
+        t.start()
+        return t
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
@@ -197,4 +238,6 @@ async def websocket_endpoint(ws: WebSocket):
         pass
 
 if __name__ == "__main__":
+    if GRPC_AVAILABLE:
+        start_grpc_server()
     uvicorn.run(app, host="0.0.0.0", port=8000)

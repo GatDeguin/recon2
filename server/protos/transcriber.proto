@@ -1,0 +1,14 @@
+syntax = "proto3";
+package transcriber;
+
+service Transcriber {
+  rpc Transcribe(VideoRequest) returns (TranscriptReply) {}
+}
+
+message VideoRequest {
+  bytes video = 1;
+}
+
+message TranscriptReply {
+  string transcript = 1;
+}
