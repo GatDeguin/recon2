@@ -10,24 +10,26 @@ from active_learning import compute_scores
 
 def _create_data(h5_path, csv_path):
     with h5py.File(h5_path, "w") as h5:
-        grp = h5.create_group("sample.mp4")
         T = 2
-        grp.create_dataset("pose", data=np.zeros((T, 33 * 3), np.float32))
-        grp.create_dataset("left_hand", data=np.zeros((T, 21 * 3), np.float32))
-        grp.create_dataset("right_hand", data=np.zeros((T, 21 * 3), np.float32))
-        grp.create_dataset("face", data=np.zeros((T, 468 * 3), np.float32))
-        grp.create_dataset("optical_flow", data=np.zeros((T, 2, 2, 2), np.float32))
+        for i in range(2):
+            grp = h5.create_group(f"sample{i}.mp4")
+            grp.create_dataset("pose", data=np.zeros((T, 33 * 3), np.float32))
+            grp.create_dataset("left_hand", data=np.zeros((T, 21 * 3), np.float32))
+            grp.create_dataset("right_hand", data=np.zeros((T, 21 * 3), np.float32))
+            grp.create_dataset("face", data=np.zeros((T, 468 * 3), np.float32))
+            grp.create_dataset("optical_flow", data=np.zeros((T, 2, 2, 2), np.float32))
+
     pd.DataFrame({
-        "id": ["sample"],
-        "label": ["hello world"],
-        "nmm": ["neutral"],
-        "suffix": ["none"],
-        "rnm": ["tipo1"],
-        "person": ["1"],
-        "number": ["sg"],
-        "tense": ["pres"],
-        "aspect": ["simple"],
-        "mode": ["ind"],
+        "id": ["sample0", "sample1"],
+        "label": ["hello world", "hello world"],
+        "nmm": ["neutral", "neutral"],
+        "suffix": ["none", "none"],
+        "rnm": ["tipo1", "tipo1"],
+        "person": ["1", "1"],
+        "number": ["sg", "sg"],
+        "tense": ["pres", "pres"],
+        "aspect": ["simple", "simple"],
+        "mode": ["ind", "ind"],
     }).to_csv(csv_path, sep=";", index=False)
 
 
@@ -49,10 +51,10 @@ def test_compute_scores_with_collate(tmp_path):
     _create_data(h5_file, csv_file)
 
     with SignDataset(str(h5_file), str(csv_file)) as ds:
-        dl = DataLoader(ds, batch_size=1, shuffle=False, collate_fn=collate)
+        dl = DataLoader(ds, batch_size=2, shuffle=False, collate_fn=collate)
         model = DummyModel(len(ds.vocab))
         scores = compute_scores(model, dl)
 
-    assert len(scores) == 1
-    assert scores[0][0] == "sample.mp4"
-    assert isinstance(scores[0][1], float)
+    assert len(scores) == 2
+    assert [s[0] for s in scores] == ["sample0.mp4", "sample1.mp4"]
+    assert all(isinstance(s[1], float) for s in scores)

@@ -13,14 +13,19 @@ from train import SignDataset, collate, build_model
 
 
 def compute_scores(model: torch.nn.Module, loader: DataLoader) -> List[Tuple[str, float]]:
-    """Compute average confidence for each sample in the loader."""
+    """Compute average confidence for each sample in ``loader``.
+
+    The function works with any batch size and returns scores in the same
+    order as ``loader.dataset.samples`` regardless of the loader's batching
+    strategy.
+    """
+
     device = next(model.parameters()).device
-    scores: List[Tuple[str, float]] = []
+    scores: List[Tuple[str, float]] = [None] * len(loader.dataset)
     model.eval()
     with torch.no_grad():
-        for idx, batch in enumerate(loader):
-            # collate returns many values; the first element contains the features
-            feats = batch[0].to(device)
+        for batch_idx, (feats, *_rest) in enumerate(loader):
+            feats = feats.to(device)
 
             out = model(feats)
             if isinstance(out, (tuple, list)):
@@ -28,10 +33,13 @@ def compute_scores(model: torch.nn.Module, loader: DataLoader) -> List[Tuple[str
             else:
                 gloss_logits = out
 
-            conf = gloss_logits.exp().max(-1).values.mean().item()
-            vid = loader.dataset.samples[idx][0]
-            scores.append((vid, conf))
-    return scores
+            conf_batch = gloss_logits.exp().max(-1).values.mean(dim=1)
+            for i, conf in enumerate(conf_batch.tolist()):
+                dataset_idx = batch_idx * loader.batch_size + i
+                vid = loader.dataset.samples[dataset_idx][0]
+                scores[dataset_idx] = (vid, float(conf))
+
+    return [s for s in scores if s is not None]
 
 
 def save_selected(scores: List[Tuple[str, float]], dataset: SignDataset, out_dir: str, top_k: int = 10) -> None:
