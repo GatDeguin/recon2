@@ -5,7 +5,7 @@ torchaudio==2.2.1+cu118
 --extra-index-url https://download.pytorch.org/whl/cu118
 
 # Dependencias restantes
-mediapipe==0.10.10
+mediapipe
 pandas
 h5py
 jiwer
