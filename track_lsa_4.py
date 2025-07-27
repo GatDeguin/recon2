@@ -14,6 +14,12 @@ import mediapipe as mp
 from ultralytics import YOLO
 from optical_flow.raft_runner import compute_optical_flow
 import torch
+import pandas as pd
+import subprocess
+import tempfile
+import shutil
+
+OPENFACE_BIN = os.environ.get("OPENFACE_BIN")
 
 try:
     import ruptures as rpt  # optional dependency
@@ -111,6 +117,41 @@ def _segment_sequences(lh_seq, rh_seq, face_seq, penalty=10):
     return segments
 
 
+def _run_openface(video_path: str):
+    """Return array of [Rx,Ry,Rz,AUs] per frame or None if disabled."""
+    if not OPENFACE_BIN:
+        return None
+    tmp_dir = tempfile.mkdtemp()
+    csv_path = os.path.join(tmp_dir, "of.csv")
+    cmd = [OPENFACE_BIN, "-f", video_path, "-aus", "-pose", "-of", csv_path, "-q"]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        df = pd.read_csv(csv_path)
+        head = df[["pose_Rx", "pose_Ry", "pose_Rz"]].to_numpy(np.float32)
+        au_cols = [c for c in df.columns if c.startswith("AU") and c.endswith("_r")]
+        aus = df[au_cols].to_numpy(np.float32)
+        return np.concatenate([head, aus], axis=1)
+    except Exception:
+        return None
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _torso_tilt(pose_lm: np.ndarray) -> np.ndarray:
+    try:
+        ls, rs = pose_lm[11], pose_lm[12]
+        lh, rh = pose_lm[23], pose_lm[24]
+    except Exception:
+        return np.zeros(3, np.float32)
+    shoulders = (ls + rs) / 2
+    hips = (lh + rh) / 2
+    vec = shoulders - hips
+    pitch = np.arctan2(vec[2], np.linalg.norm(vec[:2]))
+    yaw = np.arctan2(rs[1] - ls[1], rs[0] - ls[0])
+    roll = 0.0
+    return np.array([pitch, yaw, roll], np.float32)
+
+
 def procesar_videos(input_dir, output_file,
                     yolo_conf=0.5, mp_conf=0.7,
                     show_window=True, yolox_model=None):
@@ -148,7 +189,10 @@ def procesar_videos(input_dir, output_file,
         for vid in videos:
             cap = cv2.VideoCapture(os.path.join(input_dir, vid))
             total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            of_feats = _run_openface(os.path.join(input_dir, vid))
+            n_aus = of_feats.shape[1] - 3 if of_feats is not None else 0
             pose_seq, lh_seq, rh_seq, face_seq = [], [], [], []
+            head_seq, torso_seq, au_seq = [], [], []
             prev_boxes, prev_ids = [], []
             prev_centers, motion_ema = {}, {}
             dwell_state = {'active_id': None, 'count': 0}
@@ -244,11 +288,22 @@ def procesar_videos(input_dir, output_file,
                     lh_c = tuple(to_global(lh_lm)[:,:2].mean(axis=0))
                     rh_c = tuple(to_global(rh_lm)[:,:2].mean(axis=0))
 
-                    signer_data.append({'id':id_,'box':box,
+                signer_data.append({'id':id_,'box':box,
                                         'pose':pose_g,'lh':lh_g,
                                         'rh':rh_g,'face':face_g})
-                    cur_centers[id_] = (lh_c,rh_c)
-                    frame[y1:y2,x1:x2] = roi
+                cur_centers[id_] = (lh_c,rh_c)
+                frame[y1:y2,x1:x2] = roi
+
+                idx = len(pose_seq)
+                if of_feats is not None and idx < len(of_feats):
+                    head_pose = of_feats[idx,:3]
+                    aus = of_feats[idx,3:]
+                else:
+                    head_pose = np.zeros(3, np.float32)
+                    aus = np.zeros(n_aus, np.float32)
+                head_seq.append(head_pose)
+                au_seq.append(aus)
+                torso_seq.append(_torso_tilt(pose_lm))
 
                 # Inferir signer activo con EMA + histéresis
                 active_id,dwell_state = infer_active_signer(
@@ -294,6 +349,10 @@ def procesar_videos(input_dir, output_file,
                     sg.create_dataset('optical_flow', data=flow_seq[s:e-1], compression='gzip')
                 else:
                     sg.create_dataset('optical_flow', data=np.empty((0,), np.float32), compression='gzip')
+                if of_feats is not None:
+                    sg.create_dataset('head_pose', data=np.stack(head_seq)[s:e], compression='gzip')
+                    sg.create_dataset('torso_pose', data=np.stack(torso_seq)[s:e], compression='gzip')
+                    sg.create_dataset('aus', data=np.stack(au_seq)[s:e], compression='gzip')
 
     holistic.close()
     if show_window: cv2.destroyAllWindows()
