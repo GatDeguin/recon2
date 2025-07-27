@@ -25,6 +25,11 @@ class STGCNStudent(nn.Module):
         num_nmm: int = 0,
         num_suffix: int = 0,
         num_rnm: int = 0,
+        num_person: int = 0,
+        num_number: int = 0,
+        num_tense: int = 0,
+        num_aspect: int = 0,
+        num_mode: int = 0,
     ) -> None:
         super().__init__()
         cfg_path = Path(__file__).resolve().parent / "configs" / "skeleton.yaml"
@@ -46,6 +51,11 @@ class STGCNStudent(nn.Module):
         self.nmm_head = nn.Linear(64, num_nmm) if num_nmm > 0 else None
         self.suffix_head = nn.Linear(64, num_suffix) if num_suffix > 0 else None
         self.rnm_head = nn.Linear(64, num_rnm) if num_rnm > 0 else None
+        self.person_head = nn.Linear(64, num_person) if num_person > 0 else None
+        self.number_head = nn.Linear(64, num_number) if num_number > 0 else None
+        self.tense_head = nn.Linear(64, num_tense) if num_tense > 0 else None
+        self.aspect_head = nn.Linear(64, num_aspect) if num_aspect > 0 else None
+        self.mode_head = nn.Linear(64, num_mode) if num_mode > 0 else None
 
     def forward(self, x: torch.Tensor, return_features: bool = False):
         N, C, T, V = x.size()
@@ -62,7 +72,22 @@ class STGCNStudent(nn.Module):
         nmm = self.nmm_head(pooled) if self.nmm_head else None
         suffix = self.suffix_head(pooled) if self.suffix_head else None
         rnm = self.rnm_head(pooled) if self.rnm_head else None
-        outputs = (gloss, nmm, suffix, rnm)
+        person = self.person_head(pooled) if self.person_head else None
+        number = self.number_head(pooled) if self.number_head else None
+        tense = self.tense_head(pooled) if self.tense_head else None
+        aspect = self.aspect_head(pooled) if self.aspect_head else None
+        mode = self.mode_head(pooled) if self.mode_head else None
+        outputs = (
+            gloss,
+            nmm,
+            suffix,
+            rnm,
+            person,
+            number,
+            tense,
+            aspect,
+            mode,
+        )
         if return_features:
             return outputs, feat
         return outputs
@@ -74,9 +99,26 @@ def build_student_model(
     num_nmm: int = 0,
     num_suffix: int = 0,
     num_rnm: int = 0,
+    num_person: int = 0,
+    num_number: int = 0,
+    num_tense: int = 0,
+    num_aspect: int = 0,
+    num_mode: int = 0,
 ) -> nn.Module:
     if name == "stgcn":
-        return STGCNStudent(3, num_classes, 544, num_nmm, num_suffix, num_rnm)
+        return STGCNStudent(
+            3,
+            num_classes,
+            544,
+            num_nmm,
+            num_suffix,
+            num_rnm,
+            num_person,
+            num_number,
+            num_tense,
+            num_aspect,
+            num_mode,
+        )
     if name == "sttn":
         return STTN(
             3,
@@ -87,6 +129,11 @@ def build_student_model(
             num_nmm=num_nmm,
             num_suffix=num_suffix,
             num_rnm=num_rnm,
+            num_person=num_person,
+            num_number=num_number,
+            num_tense=num_tense,
+            num_aspect=num_aspect,
+            num_mode=num_mode,
         )
     if name == "corrnet+":
         # CorrNetPlus wraps STGCN; we reuse the student STGCN for the encoder
