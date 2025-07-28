@@ -1,1 +1,18 @@
 salida_mejorado.h5
+
+# Ignore Python cache directories
+__pycache__/
+
+# Ignore local virtual environment
+.venv/
+
+# Ignore logs and checkpoints
+logs/
+checkpoints/
+
+# Ignore exported models
+*.onnx
+
+# Ignore temporary files
+*~
+*.tmp
