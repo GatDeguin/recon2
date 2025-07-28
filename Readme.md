@@ -17,8 +17,9 @@ python data/download.py <corpus> DEST --username USER --password PASS
 ```
 
 `<corpus>` puede ser `lsa_t`, `lsa64`, `phoenix` o `col-sltd`. El script
-verifica la suma SHA‑256, extrae los archivos y coloca los vídeos en
-`DEST/videos` y las anotaciones en `DEST/meta.csv`.
+verifica la suma SHA‑256, muestra una barra de progreso durante la descarga,
+extrae los archivos y coloca los vídeos en `DEST/videos` y las anotaciones en
+`DEST/meta.csv`.
 
 ### 1.2 Esquema de Anotación Multitarea
 
