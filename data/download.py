@@ -11,6 +11,11 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     requests = None
 
+try:
+    from tqdm import tqdm  # pragma: no cover - optional dependency
+except Exception:  # pragma: no cover - optional dependency
+    tqdm = None
+
 
 _DATASETS = {
     "lsa_t": {
@@ -41,10 +46,24 @@ def _download_file(url: str, out_path: str, username: Optional[str] = None, pass
     auth = (username, password) if username or password else None
     with requests.get(url, stream=True, auth=auth) as r:
         r.raise_for_status()
+        total = int(r.headers.get("Content-Length", 0))
+        pbar = None
+        if tqdm is not None:
+            pbar = tqdm(
+                total=total,
+                unit="B",
+                unit_scale=True,
+                desc=os.path.basename(out_path),
+                disable=total == 0,
+            )
         with open(out_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
+                    if pbar is not None:
+                        pbar.update(len(chunk))
+        if pbar is not None:
+            pbar.close()
 
 
 def _verify_checksum(path: str, checksum: str) -> bool:
