@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import argparse
+from pathlib import Path
 import h5py
 import pandas as pd
 import numpy as np
@@ -575,16 +576,23 @@ def train(args):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description='Train sign language models with CTC loss')
-    p.add_argument('--h5_file', required=True, help='HDF5 file with landmarks and optical flow')
-    p.add_argument('--csv_file', required=True, help='CSV file with transcripts')
-    p.add_argument('--epochs', type=int, default=10)
-    p.add_argument('--batch_size', type=int, default=4)
-    p.add_argument('--model', type=str, default='stgcn', choices=['stgcn', 'sttn', 'corrnet+', 'mcst'], help='Model architecture')
+    p.add_argument('--h5_file', help='HDF5 file with landmarks and optical flow')
+    p.add_argument('--csv_file', help='CSV file with transcripts')
+    p.add_argument('--epochs', type=int)
+    p.add_argument('--batch_size', type=int)
+    p.add_argument('--model', type=str, choices=['stgcn', 'sttn', 'corrnet+', 'mcst'], help='Model architecture')
     p.add_argument('--domain_labels', help='CSV con etiquetas de dominio opcional')
     p.add_argument('--contrastive', action='store_true', help='Use contrastive loss')
     p.add_argument('--segments', action='store_true', help='Load segment_* subgroups as separate samples')
     p.add_argument('--include_openface', action='store_true', help='Load head/torso pose and AUs if present')
-    p.add_argument('--initial_length', type=int, default=0, help='Initial maximum sequence length')
-    p.add_argument('--length_schedule', default='', help='Comma separated maximum lengths for subsequent epochs')
+    p.add_argument('--initial_length', type=int)
+    p.add_argument('--length_schedule', help='Comma separated maximum lengths for subsequent epochs')
     args = p.parse_args()
+
+    cfg_path = Path(__file__).resolve().parent / 'configs' / 'config.yaml'
+    from utils.config import load_config, apply_defaults
+
+    cfg = load_config(cfg_path)
+    apply_defaults(args, cfg)
+
     train(args)

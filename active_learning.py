@@ -2,6 +2,7 @@
 """Selecciona ejemplos de baja confianza para reentrenamiento."""
 import os
 import argparse
+from pathlib import Path
 import h5py
 import torch
 from torch.utils.data import DataLoader
@@ -75,13 +76,19 @@ def copy_videos(paths: List[str], out_dir: str) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Proceso simple de active learning")
-    p.add_argument("--checkpoint", required=True, help="Modelo entrenado")
-    p.add_argument("--h5_file", required=True)
-    p.add_argument("--csv_file", required=True)
-    p.add_argument("--out_dir", required=True)
-    p.add_argument("--top_k", type=int, default=10, help="Cantidad de ejemplos a seleccionar")
+    p.add_argument("--checkpoint")
+    p.add_argument("--h5_file")
+    p.add_argument("--csv_file")
+    p.add_argument("--out_dir")
+    p.add_argument("--top_k", type=int)
     p.add_argument("--log_file", help="CSV con registros de producción")
     args = p.parse_args()
+
+    cfg_path = Path(__file__).resolve().parent / "configs" / "config.yaml"
+    from utils.config import load_config, apply_defaults
+
+    cfg = load_config(cfg_path)
+    apply_defaults(args, cfg)
 
     with SignDataset(args.h5_file, args.csv_file) as ds:
         dl = DataLoader(ds, batch_size=1, shuffle=False, collate_fn=collate)

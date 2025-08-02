@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 import os
 from typing import Dict, List, Tuple
 
@@ -77,14 +78,20 @@ def load_vocab(path: str) -> Dict[int, str]:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Inferencia con beam-search")
-    p.add_argument("--checkpoint", required=True, help="Modelo de reconocimiento")
-    p.add_argument("--lm", required=True, help="Checkpoint LM")
-    p.add_argument("--vocab", required=True, help="Archivo vocabulario (uno por l\u00ednea)")
-    p.add_argument("--video", required=True, help="Video de entrada")
-    p.add_argument("--h5", required=True, help="HDF5 con features")
-    p.add_argument("--beam", type=int, default=5, help="Tama\u00f1o de beam")
+    p.add_argument("--checkpoint", help="Modelo de reconocimiento")
+    p.add_argument("--lm", help="Checkpoint LM")
+    p.add_argument("--vocab", help="Archivo vocabulario (uno por línea)")
+    p.add_argument("--video", help="Video de entrada")
+    p.add_argument("--h5", help="HDF5 con features")
+    p.add_argument("--beam", type=int, default=5, help="Tamaño de beam")
     p.add_argument("--lm_weight", type=float, default=0.5, help="Peso del LM")
     args = p.parse_args()
+
+    cfg_path = Path(__file__).resolve().parent / "configs" / "config.yaml"
+    from utils.config import load_config, apply_defaults
+
+    cfg = load_config(cfg_path)
+    apply_defaults(args, cfg)
 
     vocab = load_vocab(args.vocab)
     feat = load_features(args.video, args.h5)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+from pathlib import Path
 import os
 import h5py
 import numpy as np
@@ -75,9 +76,16 @@ def train(args):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description='Pretrain SHuBERT with self-supervised masking')
-    p.add_argument('--h5_file', required=True)
-    p.add_argument('--epochs', type=int, default=10)
-    p.add_argument('--batch_size', type=int, default=8)
-    p.add_argument('--mask_prob', type=float, default=0.15)
+    p.add_argument('--h5_file')
+    p.add_argument('--epochs', type=int)
+    p.add_argument('--batch_size', type=int)
+    p.add_argument('--mask_prob', type=float)
     args = p.parse_args()
+
+    cfg_path = Path(__file__).resolve().parent / 'configs' / 'config.yaml'
+    from utils.config import load_config, apply_defaults
+
+    cfg = load_config(cfg_path)
+    apply_defaults(args, cfg)
+
     train(args)

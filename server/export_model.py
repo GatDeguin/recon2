@@ -1,15 +1,22 @@
 import argparse
+from pathlib import Path
 import torch
 from torch import nn
 
 
 def main():
     p = argparse.ArgumentParser(description="Exportar modelo a TorchScript u ONNX")
-    p.add_argument("--checkpoint", required=True, help="Ruta al checkpoint de PyTorch")
-    p.add_argument("--output", required=True, help="Archivo de salida")
+    p.add_argument("--checkpoint")
+    p.add_argument("--output")
     p.add_argument("--onnx", action="store_true", help="Exportar en formato ONNX")
-    p.add_argument("--seq_len", type=int, default=16, help="Longitud de secuencia simulada")
+    p.add_argument("--seq_len", type=int)
     args = p.parse_args()
+
+    cfg_path = Path(__file__).resolve().parents[1] / "configs" / "config.yaml"
+    from utils.config import load_config, apply_defaults
+
+    cfg = load_config(cfg_path)
+    apply_defaults(args, cfg)
 
     model = torch.load(args.checkpoint, map_location="cpu")
     if isinstance(model, nn.Module):
