@@ -1,0 +1,21 @@
+# Default configuration for scripts
+
+dataset:
+  h5_file: data/data.h5
+  csv_file: data/labels.csv
+  domain_csv: null
+
+checkpoints:
+  dir: checkpoints
+  teacher_ckpt: checkpoints/teacher.pt
+
+model:
+  arch: stgcn
+
+hyperparameters:
+  epochs: 10
+  batch_size: 4
+  initial_length: 0
+  length_schedule: ""
+  mask_prob: 0.15
+  seq_len: 16

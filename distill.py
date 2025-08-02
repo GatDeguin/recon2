@@ -252,17 +252,24 @@ def distill(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Distil a model using KL divergence")
-    p.add_argument("--h5_file", required=True)
-    p.add_argument("--csv_file", required=True)
-    p.add_argument("--teacher_ckpt", required=True)
+    p.add_argument("--h5_file")
+    p.add_argument("--csv_file")
+    p.add_argument("--teacher_ckpt")
     p.add_argument(
         "--model",
         default="stgcn",
         choices=["stgcn", "sttn", "corrnet+", "mcst"],
         help="Arquitectura del modelo",
     )
-    p.add_argument("--batch_size", type=int, default=4)
-    p.add_argument("--epochs", type=int, default=5)
+    p.add_argument("--batch_size", type=int)
+    p.add_argument("--epochs", type=int)
     p.add_argument("--domain_labels", help="CSV con etiquetas de dominio opcional")
     args = p.parse_args()
+
+    cfg_path = Path(__file__).resolve().parent / "configs" / "config.yaml"
+    from utils.config import load_config, apply_defaults
+
+    cfg = load_config(cfg_path)
+    apply_defaults(args, cfg)
+
     distill(args)

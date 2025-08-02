@@ -145,6 +145,14 @@ python distill.py --h5_file datos.h5 --csv_file labels.csv \
 El script guarda el checkpoint reducido en `checkpoints/` y reporta WER y
 precisión de NMM comparando alumno y profesor.
 
+### 5.3 Configuración por defecto
+
+Los scripts de entrenamiento, exportación y distilación pueden leer valores
+por omisión desde `configs/config.yaml`. Si una opción de la línea de comandos
+no se proporciona, se utilizará el valor definido en este archivo. Allí se
+especifican las rutas de los datasets, la carpeta de `checkpoints`, la
+arquitectura del modelo y los hiperparámetros más comunes.
+
 ---
 
 ## 6. Despliegue y Monitoreo
