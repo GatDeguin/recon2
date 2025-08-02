@@ -10,8 +10,6 @@ import argparse
 import numpy as np
 import h5py
 from tqdm import tqdm
-import mediapipe as mp
-from ultralytics import YOLO
 from optical_flow.raft_runner import compute_optical_flow
 import torch
 import pandas as pd
@@ -19,17 +17,9 @@ import subprocess
 import tempfile
 import shutil
 
+from utils.pipeline import PersonDetector, LandmarkExtractor, segment_sequences
+
 OPENFACE_BIN = os.environ.get("OPENFACE_BIN")
-
-try:
-    import ruptures as rpt  # optional dependency
-except Exception:  # pragma: no cover - optional dependency
-    rpt = None
-
-try:
-    import onnxruntime as ort  # optional, only when using YOLOX
-except Exception:  # pragma: no cover - optional dependency
-    ort = None
 
 
 def box_iou(a, b):
@@ -83,40 +73,6 @@ def infer_active_signer(prev_centers, cur_centers,
     return active_id, dwell_state
 
 
-def _segment_sequences(lh_seq, rh_seq, face_seq, penalty=10):
-    """Detect change points using PELT on landmark velocities."""
-    if len(lh_seq) == 0:
-        return [(0, 0)]
-    lh = np.stack(lh_seq)
-    rh = np.stack(rh_seq)
-    face = np.stack(face_seq)
-    speed = np.zeros(len(lh), np.float32)
-    if len(lh) > 1:
-        lh_diff = np.linalg.norm(lh[1:] - lh[:-1], axis=1)
-        rh_diff = np.linalg.norm(rh[1:] - rh[:-1], axis=1)
-        face_diff = np.linalg.norm(face[1:] - face[:-1], axis=1)
-        speed[1:] = lh_diff + rh_diff + 0.1 * face_diff
-
-    if rpt is not None and len(speed) > 1:
-        algo = rpt.Pelt(model="rbf").fit(speed.reshape(-1, 1))
-        boundaries = [0] + algo.predict(pen=penalty)
-    else:  # Fallback using simple threshold on speed
-        thr = speed.mean() * 0.5
-        boundaries = [0]
-        for i in range(1, len(speed)):
-            if speed[i] < thr and speed[max(0, i-1)] >= thr:
-                boundaries.append(i)
-        boundaries.append(len(speed))
-
-    segments = []
-    for s, e in zip(boundaries[:-1], boundaries[1:]):
-        if e > s:
-            segments.append((s, e))
-    if not segments:
-        segments.append((0, len(speed)))
-    return segments
-
-
 def _run_openface(video_path: str):
     """Return array of [Rx,Ry,Rz,AUs] per frame or None if disabled."""
     if not OPENFACE_BIN:
@@ -162,26 +118,8 @@ def procesar_videos(input_dir, output_file,
     empleará YOLOv8 desde ``ultralytics``.
     """
 
-    yolox_sess = None
-    if yolox_model:
-        if ort is None:
-            raise RuntimeError("onnxruntime no está disponible")
-        providers = ["CUDAExecutionProvider"] if torch.cuda.is_available() else ["CPUExecutionProvider"]
-        yolox_sess = ort.InferenceSession(yolox_model, providers=providers)
-    else:
-        # Inicializar YOLOv8 sin args en constructor
-        yolo_model = YOLO('yolov8n.pt')
-    mp_holistic  = mp.solutions.holistic
-    mp_face_mesh = mp.solutions.face_mesh
-    mp_drawing   = mp.solutions.drawing_utils
-
-    holistic = mp_holistic.Holistic(
-        static_image_mode=False,
-        model_complexity=2,
-        smooth_landmarks=True,
-        min_detection_confidence=mp_conf,
-        min_tracking_confidence=mp_conf
-    )
+    detector = PersonDetector(conf=yolo_conf, yolox_model=yolox_model)
+    extractor = LandmarkExtractor(mp_conf=mp_conf)
 
     with h5py.File(output_file, 'w') as h5f:
         videos = sorted([f for f in os.listdir(input_dir)
@@ -205,25 +143,7 @@ def procesar_videos(input_dir, output_file,
                 ret, frame = cap.read()
                 if not ret:
                     break
-                if yolox_sess is not None:
-                    ih, iw = yolox_sess.get_inputs()[0].shape[2:]
-                    img = cv2.resize(frame, (iw, ih)).astype(np.float32)
-                    img = img.transpose(2, 0, 1)[None]
-                    preds = yolox_sess.run(None, {yolox_sess.get_inputs()[0].name: img})[0]
-                    if preds.ndim == 3:
-                        preds = preds[0]
-                    valid = preds[(preds[:, 4] >= yolo_conf) & (preds[:, 5] == 0)]
-                    scale_x = frame.shape[1] / iw
-                    scale_y = frame.shape[0] / ih
-                    boxes = valid[:, :4].copy()
-                    boxes[:, 0] *= scale_x
-                    boxes[:, 2] *= scale_x
-                    boxes[:, 1] *= scale_y
-                    boxes[:, 3] *= scale_y
-                    boxes = boxes.astype(int)
-                else:
-                    yres = yolo_model(frame, device=0, half=True, conf=yolo_conf, classes=[0])[0]
-                    boxes = yres.boxes.xyxy.cpu().numpy().astype(int)
+                boxes = detector.detect(frame)
 
                 # Asignar IDs persistentes
                 cur_ids = [-1]*len(boxes)
@@ -241,58 +161,15 @@ def procesar_videos(input_dir, output_file,
 
                 signer_data, cur_centers = [], {}
                 for box, id_ in zip(cur_boxes, cur_ids):
-                    x1,y1,x2,y2 = box
-                    roi = frame[y1:y2, x1:x2]
-                    # Preprocesado GPU con OpenCV CUDA
-                    try:
-                        gpu_roi = cv2.cuda_GpuMat(); gpu_roi.upload(roi)
-                        gpu_rgb = cv2.cuda.cvtColor(gpu_roi, cv2.COLOR_BGR2RGB)
-                        rgb = gpu_rgb.download()
-                    except Exception:
-                        rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
+                    data = extractor.extract(frame, box)
+                    signer_data.append({'id': id_, 'box': box,
+                                        'pose': data['pose'],
+                                        'lh': data['left_hand'],
+                                        'rh': data['right_hand'],
+                                        'face': data['face']})
+                    cur_centers[id_] = (data['lh_center'], data['rh_center'])
 
-                    res = holistic.process(rgb)
-                    # Dibujar landmarks en ROI...
-                    if res.face_landmarks:
-                        mp_drawing.draw_landmarks(roi, res.face_landmarks,
-                            mp_face_mesh.FACEMESH_TESSELATION,
-                            mp_drawing.DrawingSpec(thickness=1, circle_radius=1),
-                            mp_drawing.DrawingSpec(thickness=1))
-                    if res.pose_landmarks:
-                        mp_drawing.draw_landmarks(roi, res.pose_landmarks,
-                            mp_holistic.POSE_CONNECTIONS)
-                    if res.left_hand_landmarks:
-                        mp_drawing.draw_landmarks(roi, res.left_hand_landmarks,
-                            mp_holistic.HAND_CONNECTIONS)
-                    if res.right_hand_landmarks:
-                        mp_drawing.draw_landmarks(roi, res.right_hand_landmarks,
-                            mp_holistic.HAND_CONNECTIONS)
-
-                    # Extraer arrays de landmarks...
-                    def lm_arr(lm, n):
-                        return np.array([[p.x,p.y,p.z] for p in lm.landmark], np.float32) \
-                            if lm else np.zeros((n,3), np.float32)
-
-                    pose_lm = lm_arr(res.pose_landmarks,33)
-                    lh_lm   = lm_arr(res.left_hand_landmarks,21)
-                    rh_lm   = lm_arr(res.right_hand_landmarks,21)
-                    face_lm = lm_arr(res.face_landmarks,468)
-
-                    def to_global(pts):
-                        g=pts.copy(); g[:,0]=g[:,0]*(x2-x1)+x1; g[:,1]=g[:,1]*(y2-y1)+y1; return g
-
-                    pose_g = to_global(pose_lm).reshape(-1)
-                    lh_g   = to_global(lh_lm).reshape(-1)
-                    rh_g   = to_global(rh_lm).reshape(-1)
-                    face_g = to_global(face_lm).reshape(-1)
-                    lh_c = tuple(to_global(lh_lm)[:,:2].mean(axis=0))
-                    rh_c = tuple(to_global(rh_lm)[:,:2].mean(axis=0))
-
-                signer_data.append({'id':id_,'box':box,
-                                        'pose':pose_g,'lh':lh_g,
-                                        'rh':rh_g,'face':face_g})
-                cur_centers[id_] = (lh_c,rh_c)
-                frame[y1:y2,x1:x2] = roi
+                pose_lm = signer_data[0]['pose'].reshape(33, 3) if signer_data else np.zeros((33, 3), np.float32)
 
                 idx = len(pose_seq)
                 if of_feats is not None and idx < len(of_feats):
@@ -332,7 +209,7 @@ def procesar_videos(input_dir, output_file,
             pbar.close(); cap.release()
             flow_seq = compute_optical_flow(os.path.join(input_dir, vid))
 
-            segments = _segment_sequences(lh_seq, rh_seq, face_seq)
+            segments = segment_sequences(lh_seq, rh_seq, face_seq)
             pose_arr = np.stack(pose_seq)
             lh_arr = np.stack(lh_seq)
             rh_arr = np.stack(rh_seq)
@@ -354,7 +231,7 @@ def procesar_videos(input_dir, output_file,
                     sg.create_dataset('torso_pose', data=np.stack(torso_seq)[s:e], compression='gzip')
                     sg.create_dataset('aus', data=np.stack(au_seq)[s:e], compression='gzip')
 
-    holistic.close()
+    extractor.close()
     if show_window: cv2.destroyAllWindows()
     print(f"\n✅ Datos volcados en {output_file}")
 
