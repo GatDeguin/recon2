@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recon2"
+version = "0.1.0"
+description = "Sign language recognition pipeline"
+readme = "Readme.md"
+requires-python = ">=3.8"
+authors = [{name="Recon2 Maintainers"}]
+license = {text = "MIT"}
+
+# Core dependencies
+dependencies = [
+    "torch>=2.2.1",
+    "torchvision>=0.17.1",
+    "torchaudio>=2.2.1",
+    "mediapipe",
+    "pandas",
+    "h5py",
+    "jiwer",
+    "numpy==1.26.4",
+    "opencv-python==4.8.1.78",
+    "tqdm",
+    "pyyaml",
+    "ruptures",
+    "fastapi",
+    "uvicorn[standard]",
+    "grpcio",
+    "protobuf",
+    "ultralytics",
+    "spacy",
+    "pillow",
+    "onnxruntime",
+]
+
+[project.optional-dependencies]
+raft = ["git+https://github.com/princeton-vl/RAFT.git"]
+openface = ["openface"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "*.venv*"]
