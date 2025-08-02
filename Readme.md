@@ -1,6 +1,41 @@
 Readme
 ---
 
+## Instalaci\xC3\xB3n y Entorno
+
+Para trabajar con el proyecto se recomienda crear un entorno virtual de Python:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+# Instalaci\xC3\xB3n del paquete
+pip install .
+```
+
+Si se desean funcionalidades opcionales como c\xC3\xA1lculo de flujo \xC3\xB3ptico con RAFT o extracci\xC3\xB3n de OpenFace, instale con:
+
+```bash
+pip install .[raft,openface]
+```
+
+### Prerrequisitos de GPU
+
+Se necesita una GPU NVIDIA con CUDA 11.8 para entrenar y acelerar la inferencia.
+Instale PyTorch con la versi\xC3\xB3n de CUDA apropiada desde [pytorch.org](https://pytorch.org/).
+
+### Variables de entorno relevantes
+
+- `YOLOX_ONNX`: ruta al modelo `yolox_s.onnx`.
+- `RAFT_REPO`: directorio local con el c\xC3\xB3digo de RAFT.
+- `RAFT_CKPT`: archivo `raft-sintel.pth` si no se usa el preentrenado de Torch Hub.
+- `OPENFACE_BIN`: binario `FeatureExtraction` de OpenFace.
+- `BACKEND`: `cpu`, `cuda` u `onnx` para seleccionar el modo de inferencia.
+- `ONNX_MODEL`: ruta del modelo ONNX para el reconocedor.
+- `LM_CKPT`: checkpoint del modelo de lenguaje opcional.
+- `BEAM_SIZE` y `LM_WEIGHT`: par\xC3\xA1metros del decodificador beam-search.
+
+
 ## 1. Adquisición y Anotación de Datos
 
 ### 1.1 Corpora Paralelos
