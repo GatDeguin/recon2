@@ -114,6 +114,10 @@ def download_dataset(name: str, dest: str, url: Optional[str] = None, checksum: 
         raise RuntimeError("Checksum mismatch for downloaded file")
     _extract_archive(archive_path, dest)
     _normalize(dest)
+    meta_path = os.path.join(dest, "meta.csv")
+    if os.path.exists(meta_path):
+        from data import meta_generator
+        meta_generator.main(meta_path, meta_path)
 
 
 def main() -> None:
