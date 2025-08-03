@@ -33,7 +33,8 @@ class SignDataset(Dataset):
         h5_path : str
             Ruta al archivo ``HDF5`` con las secuencias.
         csv_path : str
-            Archivo ``CSV`` con las etiquetas.
+            Archivo ``CSV`` con las etiquetas y columnas morfológicas
+            ``person``, ``number``, ``tense``, ``aspect`` y ``mode``.
         domain_csv : str, optional
             CSV con dominios para DANN.
         segments : bool, default ``False``
@@ -147,6 +148,8 @@ class SignDataset(Dataset):
     @staticmethod
     def _build_map(items):
         uniq = sorted(set(items))
+        if uniq == ["none"]:
+            return {}
         return {v: i for i, v in enumerate(uniq)}
 
     def __len__(self):
@@ -181,14 +184,14 @@ class SignDataset(Dataset):
             x = self.augment(x)
         tokens = [self.vocab[t] for t in lbl.split() if t in self.vocab]
         y = torch.tensor(tokens, dtype=torch.long)
-        nmm_id = self.nmm_vocab[nmm]
-        suf_id = self.suffix_vocab[suf]
-        rnm_id = self.rnm_vocab[rnm]
-        per_id = self.person_vocab[per]
-        num_id = self.number_vocab[num]
-        tense_id = self.tense_vocab[tense]
-        aspect_id = self.aspect_vocab[aspect]
-        mode_id = self.mode_vocab[mode]
+        nmm_id = self.nmm_vocab.get(nmm, 0)
+        suf_id = self.suffix_vocab.get(suf, 0)
+        rnm_id = self.rnm_vocab.get(rnm, 0)
+        per_id = self.person_vocab.get(per, 0)
+        num_id = self.number_vocab.get(num, 0)
+        tense_id = self.tense_vocab.get(tense, 0)
+        aspect_id = self.aspect_vocab.get(aspect, 0)
+        mode_id = self.mode_vocab.get(mode, 0)
         return (
             x,
             y,
@@ -577,7 +580,11 @@ def train(args):
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description='Train sign language models with CTC loss')
     p.add_argument('--h5_file', help='HDF5 file with landmarks and optical flow')
-    p.add_argument('--csv_file', help='CSV file with transcripts')
+    p.add_argument(
+        '--csv_file',
+        help='Enriched meta.csv with transcripts and morphology columns '
+             '(person, number, tense, aspect, mode)'
+    )
     p.add_argument('--epochs', type=int)
     p.add_argument('--batch_size', type=int)
     p.add_argument('--model', type=str, choices=['stgcn', 'sttn', 'corrnet+', 'mcst'], help='Model architecture')
