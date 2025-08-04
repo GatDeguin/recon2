@@ -7,11 +7,25 @@ from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 import uvicorn
 
 from .decoder import decode
-from .feature_extraction import extract_features_from_bytes, pad_batch
-from .models import GRPC_AVAILABLE, device, logger, model, onnx_sess, start_grpc_server
+from .feature_extraction import _extract_features, extract_features_from_bytes, pad_batch
+from .models import (
+    GRPC_AVAILABLE,
+    device,
+    logger,
+    load_models,
+    model,
+    onnx_sess,
+    start_grpc_server,
+)
 
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+def _load_models() -> None:
+    """Load models at application startup."""
+    load_models()
 
 
 @app.on_event("shutdown")
@@ -99,6 +113,7 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 if __name__ == "__main__":
+    load_models()
     if GRPC_AVAILABLE:
         start_grpc_server()
     uvicorn.run(app, host="0.0.0.0", port=8000)

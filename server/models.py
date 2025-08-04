@@ -14,53 +14,77 @@ except Exception:  # pragma: no cover - optional dependency
 # Optional OpenFace binary
 OPENFACE_BIN = os.environ.get("OPENFACE_BIN")
 
-# Initialize detection models
-mp_holistic = mp.solutions.holistic
-yolox_path = os.environ.get("YOLOX_ONNX")
-if yolox_path and ort is not None:
-    providers = ["CUDAExecutionProvider"] if torch.cuda.is_available() else ["CPUExecutionProvider"]
-    yolox_sess = ort.InferenceSession(yolox_path, providers=providers)
-    yolo_model = None
-else:
-    yolox_sess = None
-    yolo_model = YOLO("yolov8n.pt")
-
-holistic_model = mp_holistic.Holistic(
-    static_image_mode=False,
-    model_complexity=2,
-    smooth_landmarks=True,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7,
-)
-
 # Logging
 os.makedirs("logs/videos", exist_ok=True)
 logger = MetricsLogger(os.path.join("logs", "metrics.db"))
 
-# Backend selection: cpu, cuda or onnx
-BACKEND = os.environ.get("BACKEND", "cpu").lower()
-ONNX_PATH = os.environ.get("ONNX_MODEL", "checkpoints/model.onnx")
-
+# Placeholders for models
+mp_holistic = None
+yolox_sess = None
+yolo_model = None
+holistic_model = None
 model = None
 onnx_sess = None
 device = "cpu"
 
-if BACKEND == "onnx":
-    if ort is not None:
-        providers = ["CUDAExecutionProvider" if torch.cuda.is_available() else "CPUExecutionProvider"]
-        try:
-            onnx_sess = ort.InferenceSession(ONNX_PATH, providers=providers)
-        except Exception:
+_MODELS_LOADED = False
+
+
+def load_models() -> None:
+    """Load detection and transcription models.
+
+    Environment variables are read at call time so that model loading
+    respects values set before invocation. Subsequent calls are no-ops.
+    """
+    global mp_holistic, yolox_sess, yolo_model, holistic_model
+    global model, onnx_sess, device, _MODELS_LOADED
+
+    if _MODELS_LOADED:
+        return
+
+    mp_holistic = mp.solutions.holistic
+
+    # Initialize detection models
+    yolox_path = os.environ.get("YOLOX_ONNX")
+    if yolox_path and ort is not None:
+        providers = ["CUDAExecutionProvider"] if torch.cuda.is_available() else ["CPUExecutionProvider"]
+        yolox_sess = ort.InferenceSession(yolox_path, providers=providers)
+        yolo_model = None
+    else:
+        yolox_sess = None
+        yolo_model = YOLO("yolov8n.pt")
+
+    holistic_model = mp_holistic.Holistic(
+        static_image_mode=False,
+        model_complexity=2,
+        smooth_landmarks=True,
+        min_detection_confidence=0.7,
+        min_tracking_confidence=0.7,
+    )
+
+    # Backend selection: cpu, cuda or onnx
+    backend = os.environ.get("BACKEND", "cpu").lower()
+    onnx_path = os.environ.get("ONNX_MODEL", "checkpoints/model.onnx")
+
+    if backend == "onnx":
+        if ort is not None:
+            providers = ["CUDAExecutionProvider"] if torch.cuda.is_available() else ["CPUExecutionProvider"]
+            try:
+                onnx_sess = ort.InferenceSession(onnx_path, providers=providers)
+            except Exception:  # pragma: no cover - optional dependency
+                onnx_sess = None
+        else:
             onnx_sess = None
     else:
-        onnx_sess = None
-else:
-    device = "cuda" if BACKEND == "cuda" and torch.cuda.is_available() else "cpu"
-    try:
-        model = torch.jit.load("checkpoints/model.ts", map_location=device)
-        model.eval()
-    except Exception:
-        model = None
+        device = "cuda" if backend == "cuda" and torch.cuda.is_available() else "cpu"
+        try:
+            model = torch.jit.load("checkpoints/model.ts", map_location=device)
+            model.eval()
+        except Exception:  # pragma: no cover - optional dependency
+            model = None
+
+    _MODELS_LOADED = True
+
 
 # Optional gRPC support
 try:
