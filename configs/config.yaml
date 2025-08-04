@@ -45,3 +45,7 @@ hyperparameters:
   pose_loss_weight: 1.0
   # Weight for auxiliary loss (>=0)
   aux_loss_weight: 0.1
+  adversarial: false
+  adv_mix_rate: 1.0
+  adv_weight: 0.1
+  adv_steps: 1

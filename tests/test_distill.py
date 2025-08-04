@@ -59,7 +59,7 @@ def test_distill_single_step(tmp_path):
         model="stgcn",
         batch_size=1,
         epochs=1,
-        domain_labels=None,
+        domain_csv=None,
     )
 
     cwd = os.getcwd()

@@ -372,7 +372,7 @@ def train(args):
     with SignDataset(
         args.h5_file,
         args.csv_file,
-        args.domain_labels,
+        args.domain_csv,
         segments=args.segments,
         include_openface=args.include_openface,
     ) as ds:
@@ -395,7 +395,7 @@ def train(args):
         criterion = nn.CTCLoss(blank=0, zero_infinity=True)
         ce_loss = nn.CrossEntropyLoss()
         optim = torch.optim.Adam(model.parameters(), lr=1e-3)
-        if args.domain_labels:
+        if args.adversarial:
             from dann import DomainDiscriminator, grad_reverse
             disc = DomainDiscriminator(128, ds.num_domains)
             disc.to(device)
@@ -447,7 +447,7 @@ def train(args):
                 mode_lbls = mode_lbls.to(device)
                 feat_lens = feat_lens.to(device)
                 label_lens = label_lens.to(device)
-                return_feat = args.domain_labels or args.contrastive
+                return_feat = args.adversarial or args.contrastive
                 if return_feat:
                     (
                         gloss_logits,
@@ -495,11 +495,17 @@ def train(args):
                     loss = loss + ce_loss(aspect_logits, aspect_lbls)
                 if mode_logits is not None:
                     loss = loss + ce_loss(mode_logits, mode_lbls)
-                if args.domain_labels:
+                if args.adversarial:
                     dom_feat = feats_emb.mean(dim=1)
-                    dom_logits = disc(grad_reverse(dom_feat))
+                    for _ in range(args.adv_steps):
+                        disc_optim.zero_grad()
+                        dom_logits = disc(dom_feat.detach())
+                        disc_loss = adv_criterion(dom_logits, domains)
+                        disc_loss.backward()
+                        disc_optim.step()
+                    dom_logits = disc(grad_reverse(dom_feat, args.adv_mix_rate))
                     adv_loss = adv_criterion(dom_logits, domains)
-                    loss = loss + 0.1 * adv_loss
+                    loss = loss + args.adv_weight * adv_loss
                 if args.contrastive:
                     cont = _contrastive(feats_emb)
                     loss = loss + 0.1 * cont
@@ -508,8 +514,6 @@ def train(args):
                     disc_optim.zero_grad()
                 loss.backward()
                 optim.step()
-                if disc_optim:
-                    disc_optim.step()
                 epoch_loss += loss.item()
             avg = epoch_loss / len(dl)
             print(f"Epoch {epoch+1}: loss {avg:.4f}")
@@ -543,7 +547,11 @@ if __name__ == '__main__':
     p.add_argument('--epochs', type=int)
     p.add_argument('--batch_size', type=int)
     p.add_argument('--model', type=str, choices=['stgcn', 'sttn', 'corrnet+', 'mcst'], help='Model architecture')
-    p.add_argument('--domain_labels', help='CSV con etiquetas de dominio opcional')
+    p.add_argument('--adversarial', action='store_true', help='Activar entrenamiento adversarial DANN')
+    p.add_argument('--domain_csv', help='CSV con etiquetas de dominio para DANN')
+    p.add_argument('--adv_mix_rate', type=float, default=1.0, help='Lambda para grad_reverse')
+    p.add_argument('--adv_weight', type=float, default=0.1, help='Peso de la p\u00e9rdida adversarial')
+    p.add_argument('--adv_steps', type=int, default=1, help='Iteraciones del discriminador por batch')
     p.add_argument('--contrastive', action='store_true', help='Use contrastive loss')
     p.add_argument('--segments', action='store_true', help='Load segment_* subgroups as separate samples')
     p.add_argument('--include_openface', action='store_true', help='Load head/torso pose and AUs if present')

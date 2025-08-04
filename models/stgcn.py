@@ -58,6 +58,8 @@ class STGCN(nn.Module):
         if cfg_path.exists():
             try:
                 A = build_adjacency(cfg_path)
+                if A.shape[0] != num_nodes:
+                    A = np.eye(num_nodes, dtype=np.float32)
             except Exception:
                 A = np.eye(num_nodes, dtype=np.float32)
         else:
