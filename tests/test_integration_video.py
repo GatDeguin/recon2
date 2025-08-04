@@ -1,3 +1,4 @@
+import os
 import sys
 from types import SimpleNamespace
 import numpy as np
@@ -13,7 +14,8 @@ class DummyTensor:
 
 class DummyYOLO:
     def __init__(self, *a, **kw):
-        pass
+        self.args = a
+        self.kw = kw
 
     def __call__(self, frame, *a, **kw):
         boxes = SimpleNamespace(xyxy=DummyTensor([[0, 0, frame.shape[1], frame.shape[0]]]))
@@ -21,7 +23,7 @@ class DummyYOLO:
 
 class DummySess:
     def __init__(self, *a, **kw):
-        pass
+        self.args = a
     def get_inputs(self):
         return [SimpleNamespace(shape=[1, 3, 4, 4], name="in")]
     def run(self, *_a, **_kw):
@@ -41,11 +43,11 @@ class DummyHolistic:
             face_landmarks=mk(468),
         )
     def close(self):
-        pass
+        self.closed = True
 
 class DummyGpuMat:
     def upload(self, *a, **k):
-        pass
+        self.uploaded = True
     def download(self):
         return np.zeros((4, 4, 3), np.uint8)
 
@@ -64,6 +66,7 @@ mp_mod = SimpleNamespace(holistic=SimpleNamespace(Holistic=lambda **kw: DummyHol
 sys.modules.setdefault("mediapipe", SimpleNamespace(solutions=mp_mod))
 sys.modules.setdefault("torch", SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False)))
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils import pipeline
 
 
@@ -95,6 +98,7 @@ def test_integration_pipeline():
         )
     ext.close()
     feats = np.stack(feats)
+    assert feats.shape == (2, 1629)
     logits = dummy_model(feats)
     transcript = decode(logits)
     assert transcript == "dummy"
