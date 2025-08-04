@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from train import build_model
+from utils.config import load_config, apply_defaults
 
 
 def load_model(checkpoint: Path, arch: str) -> nn.Module:
@@ -34,7 +35,6 @@ def main() -> None:
     args = p.parse_args()
 
     cfg_path = Path(__file__).resolve().parent / "configs" / "config.yaml"
-    from utils.config import load_config, apply_defaults
 
     cfg = load_config(cfg_path)
     apply_defaults(args, cfg)
