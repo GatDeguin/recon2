@@ -1,6 +1,6 @@
 import os
-import time
 import uuid
+import time
 
 import torch
 from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
