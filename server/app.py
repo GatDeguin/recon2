@@ -3,12 +3,19 @@ import os
 import time
 import uuid
 
-from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    HTTPException,
+)
 import torch
 import uvicorn
 
 from .decoder import decode
-from .feature_extraction import _extract_features, extract_features_from_bytes, pad_batch
+from .feature_extraction import extract_features_from_bytes, pad_batch
 from .models import (
     GRPC_AVAILABLE,
     device,
@@ -21,6 +28,13 @@ from .models import (
 
 
 log = logging.getLogger(__name__)
+
+# Validation settings
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_SEQ_LEN = 1000
+ALLOWED_MIME_TYPES = {"video/mp4"}
+ALLOWED_EXTENSIONS = {".mp4"}
+
 app = FastAPI()
 
 
@@ -41,18 +55,32 @@ async def transcribe(files: list[UploadFile] = File(...)):
     feats_list = []
     video_paths = []
     for file in files:
+        if file.content_type not in ALLOWED_MIME_TYPES:
+            raise HTTPException(status_code=400, detail="Unsupported media type")
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="Unsupported file extension")
         data = await file.read()
+        if len(data) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large")
+        try:
+            start = time.time()
+            feats = extract_features_from_bytes(data)
+            latency = time.time() - start
+        except Exception as e:  # pragma: no cover - safety
+            raise HTTPException(
+                status_code=400, detail="Corrupt or unsupported video file"
+            ) from e
+        if feats.shape[2] > MAX_SEQ_LEN:
+            raise HTTPException(status_code=400, detail="Video exceeds maximum length")
+        feats_list.append(feats)
+        fps = feats.shape[2] / latency if latency > 0 else 0.0
+        metrics_logger.log(latency=latency, fps=fps)
         uid = uuid.uuid4().hex
         video_path = os.path.join("logs", "videos", f"{uid}.mp4")
         with open(video_path, "wb") as f:
             f.write(data)
         video_paths.append(video_path)
-
-        start = time.time()
-        feats_list.append(extract_features_from_bytes(data))
-        latency = time.time() - start
-        fps = feats_list[-1].shape[2] / latency if latency > 0 else 0.0
-        metrics_logger.log(latency=latency, fps=fps)
 
     batch = pad_batch(feats_list)
 
@@ -92,9 +120,19 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             data = await ws.receive_bytes()
-            start = time.time()
-            feats = extract_features_from_bytes(data)
-            latency = time.time() - start
+            if len(data) > MAX_FILE_SIZE:
+                await ws.send_json({"error": "File too large"})
+                continue
+            try:
+                start = time.time()
+                feats = extract_features_from_bytes(data)
+                latency = time.time() - start
+            except Exception:
+                await ws.send_json({"error": "Corrupt or unsupported video data"})
+                continue
+            if feats.shape[2] > MAX_SEQ_LEN:
+                await ws.send_json({"error": "Video exceeds maximum length"})
+                continue
             fps = feats.shape[2] / latency if latency > 0 else 0.0
 
             if onnx_sess is not None:
