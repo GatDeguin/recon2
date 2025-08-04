@@ -17,6 +17,11 @@ checkpoints:
   dir: checkpoints
   # Pretrained teacher checkpoint
   teacher_ckpt: checkpoints/teacher.pt
+  # Reference pre-trained weights for common architectures
+  stgcn_ckpt: checkpoints/stgcn.pt
+  sttn_ckpt: checkpoints/sttn.pt
+  corrnet_ckpt: checkpoints/corrnet_plus.pt
+  mcst_ckpt: checkpoints/mcst.pt
 
 model:
   # Model architecture (e.g., stgcn, lstm)
