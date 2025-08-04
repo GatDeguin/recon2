@@ -1,6 +1,7 @@
 import argparse
-import pandas as pd
 from typing import Tuple
+
+import pandas as pd
 
 try:
     import spacy
