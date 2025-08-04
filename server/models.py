@@ -1,7 +1,9 @@
 import os
+
 import torch
 import mediapipe as mp
 from ultralytics import YOLO
+
 from metrics import MetricsLogger
 
 try:  # optional dependency for YOLOX and ONNX backend
