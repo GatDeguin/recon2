@@ -1,0 +1,26 @@
+# Decoding with an external language model
+
+dataset:
+  h5_file: data/data.h5
+  features_h5: data/features.h5
+  csv_file: data/labels.csv
+  vocab: vocab.txt
+
+checkpoints:
+  dir: checkpoints
+  teacher_ckpt: checkpoints/model.pt
+
+model:
+  arch: stgcn
+
+hyperparameters:
+  epochs: 10
+  batch_size: 4
+  seq_len: 16
+  max_seq_len: 128
+  learning_rate: 0.001
+
+decoder:
+  lm_ckpt: checkpoints/lm.ckpt
+  lm_weight: 0.5
+  beam_size: 5
