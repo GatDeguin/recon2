@@ -4,6 +4,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from importlib import import_module
 
@@ -17,7 +19,9 @@ def test_verify_checksum(tmp_path):
     content = b"hello"
     file.write_bytes(content)
     digest = hashlib.sha256(content).hexdigest()
-    assert _verify_checksum(str(file), digest)
+    _verify_checksum(str(file), digest)
+    with pytest.raises(RuntimeError):
+        _verify_checksum(str(file), "bad")
 
 
 def test_extract_archive(tmp_path):
