@@ -345,3 +345,31 @@ elige `onnx` se cargará `checkpoints/model.onnx` (o la ruta indicada en
 
 El endpoint `/transcribe` ahora acepta varios archivos en la clave `files` y
 devuelve una lista de transcripciones en el mismo orden.
+
+## 8. Modelos preentrenados y pesos de referencia
+
+Se publican checkpoints preentrenados de las arquitecturas principales en la
+sección de *releases* del repositorio. Descargue los pesos y colóquelos en la
+carpeta `checkpoints/` o ajuste las rutas en `configs/config.yaml`:
+
+| Arquitectura | Archivo de ejemplo |
+|--------------|--------------------|
+| ST-GCN       | `https://github.com/OWNER/REPO/releases/download/models/stgcn.pt` |
+| STTN         | `https://github.com/OWNER/REPO/releases/download/models/sttn.pt` |
+| CorrNet+     | `https://github.com/OWNER/REPO/releases/download/models/corrnet_plus.pt` |
+| MCST         | `https://github.com/OWNER/REPO/releases/download/models/mcst.pt` |
+
+Ejemplo de descarga y uso del modelo ST-GCN:
+
+```bash
+mkdir -p checkpoints
+curl -L -o checkpoints/stgcn.pt \
+  https://github.com/OWNER/REPO/releases/download/models/stgcn.pt
+
+python infer.py --checkpoint checkpoints/stgcn.pt \
+  --lm checkpoints/lm.pt --vocab vocab.txt \
+  --video demo.mp4 --h5 data/features.h5
+```
+
+Sustituya `stgcn.pt` por `sttn.pt`, `corrnet_plus.pt` o `mcst.pt` para evaluar
+las otras arquitecturas.
