@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import warnings
 
 import torch
 import cv2
@@ -11,13 +12,15 @@ _device = 'cuda' if torch.cuda.is_available() else 'cpu'
 def _load_model():
     global _model
     if _model is None:
-        ckpt = os.environ.get("RAFT_CKPT")
+        # Allow RAFT_CHECKPOINT as an alias for RAFT_CKPT
+        ckpt = os.environ.get("RAFT_CKPT") or os.environ.get("RAFT_CHECKPOINT")
         if ckpt is None:
             default_path = Path(__file__).resolve().parent.parent / "checkpoints" / "raft-sintel.pth"
             if default_path.exists():
                 ckpt = str(default_path)
 
-        repo_env = os.environ.get("RAFT_REPO")
+        # Allow RAFT_DIR as an alias for RAFT_REPO
+        repo_env = os.environ.get("RAFT_REPO") or os.environ.get("RAFT_DIR")
         if repo_env:
             repo_dir = Path(repo_env)
             if not repo_dir.exists():
@@ -30,7 +33,7 @@ def _load_model():
             if not cached:
                 raise RuntimeError(
                     "RAFT repository not found in torch hub cache. "
-                    "Set RAFT_REPO to a local clone of the RAFT repository."
+                    "Set RAFT_DIR to a local clone of https://github.com/princeton-vl/RAFT.",
                 )
             repo_or_dir = str(cached[0])
 
@@ -50,10 +53,9 @@ def compute_optical_flow(video_path):
     except RuntimeError as e:
         if "RAFT repository not found" in str(e):
             raise RuntimeError(
-                "RAFT repository not found. Set the RAFT_REPO environment variable "
+                "RAFT repository not found. Set the RAFT_DIR environment variable "
                 "to a local clone of https://github.com/princeton-vl/RAFT or "
-                "download 'raft-sintel.pth' from the RAFT releases page and set "
-                "RAFT_CKPT to its location."
+                "download 'raft-sintel.pth' and set RAFT_CHECKPOINT to its location.",
             ) from e
         raise
     cap = cv2.VideoCapture(video_path)
