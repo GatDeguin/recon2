@@ -2,7 +2,7 @@
 """Selecciona ejemplos de baja confianza para reentrenamiento."""
 import argparse
 import os
-import shutil
+import shutil  # for file copying
 from pathlib import Path
 from typing import List, Tuple
 
