@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -75,6 +75,11 @@ def patch_deps(monkeypatch):
     mp_mod = SimpleNamespace(holistic=SimpleNamespace(Holistic=lambda **kw: DummyHolistic()))
     monkeypatch.setitem(sys.modules, "mediapipe", SimpleNamespace(solutions=mp_mod))
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False)))
+
+
+def test_sys_path_insert():
+    expected = os.path.dirname(os.path.dirname(__file__))
+    assert sys.path[0] == expected
 
 
 def test_person_detector_yolo():
