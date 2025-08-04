@@ -19,6 +19,43 @@ Si se desean funcionalidades opcionales como c\xC3\xA1lculo de flujo \xC3\xB3pti
 pip install .[raft,openface]
 ```
 
+### Dependencias externas RAFT y OpenFace
+
+Para disponer de flujo \xC3\xB3ptico y atributos faciales es necesario instalar
+los proyectos [RAFT](https://github.com/princeton-vl/RAFT) y
+[OpenFace](https://github.com/TadasBaltrusaitis/OpenFace).
+En este repositorio se incluyen scripts que automatizan la instalaci\xC3\xB3n:
+
+```bash
+# Instalar RAFT (optical flow)
+bash scripts/install_raft.sh
+
+# Compilar OpenFace
+bash scripts/install_openface.sh
+```
+
+Instalaci\xC3\xB3n manual de RAFT (probado con commit `3fa0bb0`):
+
+```bash
+git clone https://github.com/princeton-vl/RAFT.git
+cd RAFT
+pip install -r requirements.txt
+bash download_models.sh
+export RAFT_DIR=$(pwd)
+export RAFT_CHECKPOINT=$(pwd)/models/raft-sintel.pth
+```
+
+Instalaci\xC3\xB3n manual de OpenFace (probado con tag `OpenFace_2.2.0`):
+
+```bash
+git clone https://github.com/TadasBaltrusaitis/OpenFace.git --branch OpenFace_2.2.0 --depth 1
+cd OpenFace
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+export OPENFACE_BIN=$(pwd)/bin/FeatureExtraction
+```
+
 ### Prerrequisitos de GPU
 
 Se necesita una GPU NVIDIA con CUDA 11.8 para entrenar y acelerar la inferencia.
@@ -27,8 +64,8 @@ Instale PyTorch con la versi\xC3\xB3n de CUDA apropiada desde [pytorch.org](http
 ### Variables de entorno relevantes
 
 - `YOLOX_ONNX`: ruta al modelo `yolox_s.onnx`.
-- `RAFT_REPO`: directorio local con el c\xC3\xB3digo de RAFT.
-- `RAFT_CKPT`: archivo `raft-sintel.pth` si no se usa el preentrenado de Torch Hub.
+- `RAFT_DIR`: directorio local con el c\xC3\xB3digo de RAFT (alias `RAFT_REPO`).
+- `RAFT_CHECKPOINT`: archivo `raft-sintel.pth` descargado por `download_models.sh` (alias `RAFT_CKPT`).
 - `OPENFACE_BIN`: binario `FeatureExtraction` de OpenFace.
 - `BACKEND`: `cpu`, `cuda` u `onnx` para seleccionar el modo de inferencia.
 - `ONNX_MODEL`: ruta del modelo ONNX para el reconocedor.

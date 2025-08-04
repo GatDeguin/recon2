@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
+import warnings
 
 from optical_flow.raft_runner import compute_optical_flow
 from .models import OPENFACE_BIN, holistic_model, load_models, yolo_model, yolox_sess
@@ -16,6 +17,10 @@ from .models import OPENFACE_BIN, holistic_model, load_models, yolo_model, yolox
 def _run_openface(path: str) -> Optional[np.ndarray]:
     """Run OpenFace FeatureExtraction on *path* returning [Rx,Ry,Rz,AUs]."""
     if not OPENFACE_BIN:
+        warnings.warn(
+            "OPENFACE_BIN is not set. Install OpenFace and set OPENFACE_BIN to the FeatureExtraction binary.",
+            RuntimeWarning,
+        )
         return None
     tmp_dir = tempfile.mkdtemp()
     csv_path = os.path.join(tmp_dir, "of.csv")
@@ -151,7 +156,14 @@ def _extract_features(path: str) -> torch.Tensor:
 
     cap.release()
 
-    flow_seq = compute_optical_flow(path)
+    try:
+        flow_seq = compute_optical_flow(path)
+    except Exception as e:
+        warnings.warn(
+            f"RAFT unavailable ({e}). Install RAFT and set RAFT_DIR/RAFT_CHECKPOINT to enable optical flow.",
+            RuntimeWarning,
+        )
+        flow_seq = np.empty((0,), np.float32)
     avg_flow = (
         flow_seq.mean(axis=(1, 2)) if flow_seq.size > 0 else np.zeros((len(pose_seq), 2), np.float32)
     )
