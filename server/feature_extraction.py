@@ -32,7 +32,13 @@ def _run_openface(path: str) -> Optional[np.ndarray]:
         au_cols = [c for c in df.columns if c.startswith("AU") and c.endswith("_r")]
         aus = df[au_cols].to_numpy(np.float32)
         return np.concatenate([head, aus], axis=1)
-    except Exception:
+    except (
+        subprocess.CalledProcessError,
+        pd.errors.EmptyDataError,
+        pd.errors.ParserError,
+        FileNotFoundError,
+    ) as e:
+        warnings.warn(f"OpenFace feature extraction failed: {e}", RuntimeWarning)
         return None
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
