@@ -28,9 +28,20 @@ def _extract_morph(text: str, nlp) -> Tuple[str, str, str, str, str]:
     return ("none",) * 5
 
 
-def main(inp: str, out: str, model: str = _DEF_MODEL) -> None:
+def main(inp: str, out: str, model: str = _DEF_MODEL, strict: bool = False) -> None:
     df = pd.read_csv(inp, sep=";")
-    nlp = spacy.load(model) if spacy else None
+    nlp = None
+    if spacy is None:
+        if strict:
+            raise RuntimeError("spaCy is not installed")
+        print("spaCy model not found; writing default morphology")
+    else:  # pragma: no branch - optional dependency
+        try:
+            nlp = spacy.load(model)
+        except Exception:  # pragma: no cover - optional dependency
+            if strict:
+                raise
+            print("spaCy model not found; writing default morphology")
     rows = [
         _extract_morph(str(row["label"]), nlp)
         for _, row in df.iterrows()
@@ -44,5 +55,10 @@ if __name__ == "__main__":
     p.add_argument("input_csv")
     p.add_argument("output_csv")
     p.add_argument("--model", default=_DEF_MODEL, help="spaCy model")
+    p.add_argument(
+        "--strict",
+        action="store_true",
+        help="error if spaCy model cannot be loaded",
+    )
     args = p.parse_args()
-    main(args.input_csv, args.output_csv, args.model)
+    main(args.input_csv, args.output_csv, args.model, args.strict)
