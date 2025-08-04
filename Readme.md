@@ -205,6 +205,48 @@ Un cliente React/WebSocket captura la webcam o stream, envía chunks al servidor
 Se monitorizan métricas clave (WER, precisión de RNM, latencia, FPS) y se orquesta un pipeline de **active learning** semanal con ejemplos de baja confianza capturados en producción, permitiendo reentrenamientos periódicos .
 Las métricas se almacenan automáticamente en `logs/metrics.db` para su visualización posterior.
 
+### 6.4 Reanotación y regeneración de features
+
+Para seleccionar ejemplos con menor confianza y exportarlos para su revisión
+manual utilice el script `scripts/run_active_learning.py`:
+
+```bash
+python scripts/run_active_learning.py \
+  --h5_file data/data.h5 \
+  --csv_file data/labels.csv \
+  --video_dir videos \
+  --out_dir reannotation \
+  --top_k 20
+```
+
+El script toma el checkpoint más reciente de `checkpoints/` y genera los
+archivos `reannotation/selected.csv`, `reannotation/selected.h5` y una copia de
+los vídeos en `reannotation/videos/` (o los sube al bucket indicado).
+
+1. Corrija manualmente las glosas en `reannotation/selected.csv`.
+2. Una las nuevas filas al corpus original:
+
+   ```bash
+   cat reannotation/selected.csv >> data/labels.csv
+   ```
+3. Extraiga de nuevo las características HDF5 para los vídeos revisados y
+   fusione los datasets:
+
+   ```bash
+   python track_lsa_4.py --input_dir reannotation/videos \
+     --output_file reannotation/new_feats.h5 --no_window
+
+   python - <<'PY'
+   import h5py
+   with h5py.File('data/data.h5','a') as dst, h5py.File('reannotation/new_feats.h5') as src:
+       for k in src.keys():
+           src.copy(k, dst)
+   PY
+   ```
+
+Tras este proceso, las muestras reanotadas quedan integradas y se pueden
+regenerar los features para futuros entrenamientos.
+
 ---
 
 ## 7. Archivos Requeridos para el Servidor
