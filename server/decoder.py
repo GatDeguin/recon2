@@ -1,7 +1,11 @@
+import logging
 import os
 import torch
+
 from infer import beam_search
 from models.transformer_lm import load_model
+
+logger = logging.getLogger(__name__)
 
 # Load vocabulary if exists
 vocab: dict[int, str] = {}
@@ -10,7 +14,7 @@ try:
         for i, line in enumerate(f):
             vocab[i] = line.strip()
 except FileNotFoundError:
-    pass
+    logger.warning("vocab.txt not found; vocabulary will be empty")
 
 SOS_TOKEN = 1
 EOS_TOKEN = 2
@@ -23,7 +27,8 @@ lm_model = None
 if LM_CKPT:
     try:
         lm_model = load_model(LM_CKPT, vocab_size=len(vocab))
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to load language model from %s: %s", LM_CKPT, e)
         lm_model = None
 
 
