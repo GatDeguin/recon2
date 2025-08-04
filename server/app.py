@@ -1,7 +1,7 @@
 import logging
 import os
-import time
 import uuid
+import time
 
 from fastapi import (
     FastAPI,
