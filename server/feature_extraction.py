@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 
 from optical_flow.raft_runner import compute_optical_flow
-from .models import OPENFACE_BIN, holistic_model, yolo_model, yolox_sess
+from .models import OPENFACE_BIN, holistic_model, load_models, yolo_model, yolox_sess
 
 
 def _run_openface(path: str) -> Optional[np.ndarray]:
@@ -59,6 +59,9 @@ def extract_features_from_bytes(data: bytes) -> torch.Tensor:
 
 def _extract_features(path: str) -> torch.Tensor:
     """Compute landmarks and optical flow for a video path."""
+    if holistic_model is None or (yolo_model is None and yolox_sess is None):
+        load_models()
+
     cap = cv2.VideoCapture(path)
     of_feats = _run_openface(path)
     n_aus = of_feats.shape[1] - 3 if of_feats is not None else 0
