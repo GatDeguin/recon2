@@ -87,6 +87,30 @@ Endpoints disponibles:
 
 La especificación de OpenAPI se encuentra en `server/openapi.yaml`.
 
+### Servidor gRPC
+
+El servicio también expone una interfaz gRPC definida en `server/protos/transcriber.proto`.
+Para regenerar los módulos de Python a partir del `.proto` utilice:
+
+```bash
+python -m grpc_tools.protoc -I server/protos \
+    --python_out=server/protos --grpc_python_out=server/protos \
+    server/protos/transcriber.proto
+```
+
+Inicie el servidor gRPC con:
+
+```bash
+python run_grpc_server.py --port 50051
+```
+
+Ejemplos de clientes en Python:
+
+```bash
+python scripts/grpc_client.py demo.mp4
+python scripts/grpc_client_async.py demo.mp4
+```
+
 
 ## 1. Adquisición y Anotación de Datos
 
