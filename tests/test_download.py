@@ -31,3 +31,10 @@ def test_extract_archive(tmp_path):
     out_dir = tmp_path / "out"
     _extract_archive(str(zpath), str(out_dir))
     assert (out_dir / "a" / "b.txt").read_text() == "ok"
+
+
+def test_extract_archive_unknown(tmp_path):
+    unknown = tmp_path / "archive.bin"
+    unknown.write_bytes(b"not-an-archive")
+    with pytest.raises(RuntimeError):
+        _extract_archive(str(unknown), str(tmp_path / "out"))
