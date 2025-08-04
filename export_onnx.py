@@ -6,7 +6,7 @@ from torch import nn
 from train import build_model
 
 
-def load_model(checkpoint: str, arch: str) -> nn.Module:
+def load_model(checkpoint: Path, arch: str) -> nn.Module:
     ckpt = torch.load(checkpoint, map_location="cpu")
     if isinstance(ckpt, nn.Module):
         model = ckpt
@@ -25,11 +25,11 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description="Exportar checkpoint a ONNX y cuantizar dinamicamente"
     )
-    p.add_argument("--checkpoint")
+    p.add_argument("--checkpoint", type=Path)
     p.add_argument("--arch",
                    choices=["stgcn", "sttn", "corrnet+", "mcst"],
                    help="Arquitectura del modelo")
-    p.add_argument("--output")
+    p.add_argument("--output", type=Path)
     p.add_argument("--seq_len", type=int)
     args = p.parse_args()
 
@@ -53,10 +53,10 @@ def main() -> None:
     )
     print(f"ONNX guardado en {args.output}")
 
-    quant_path = args.output.replace(".onnx", "_int8.onnx")
+    quant_path = args.output.with_name(args.output.stem + "_int8.onnx")
     try:
         from onnxruntime.quantization import quantize_dynamic, QuantType
-        quantize_dynamic(args.output, quant_path, weight_type=QuantType.QInt8)
+        quantize_dynamic(str(args.output), str(quant_path), weight_type=QuantType.QInt8)
         print(f"Modelo cuantizado en {quant_path}")
     except Exception as e:
         print("Cuantizacion fallida:", e)
@@ -64,7 +64,7 @@ def main() -> None:
 
     try:
         import onnxruntime as ort
-        sess = ort.InferenceSession(quant_path, providers=["CPUExecutionProvider"])
+        sess = ort.InferenceSession(str(quant_path), providers=["CPUExecutionProvider"])
         outputs = sess.run(None, {"input": dummy.numpy()})
         print("Inferencia correcta, shapes:", [o.shape for o in outputs])
     except Exception as e:
