@@ -3,11 +3,6 @@ from typing import Tuple
 
 import pandas as pd
 
-try:
-    import spacy
-except Exception:  # pragma: no cover - optional dependency
-    spacy = None
-
 
 _DEF_MODEL = "es_core_news_sm"
 
@@ -31,7 +26,9 @@ def _extract_morph(text: str, nlp) -> Tuple[str, str, str, str, str]:
 def main(inp: str, out: str, model: str = _DEF_MODEL, strict: bool = False) -> None:
     df = pd.read_csv(inp, sep=";")
     nlp = None
-    if spacy is None:
+    try:
+        import spacy  # type: ignore
+    except Exception:  # pragma: no cover - optional dependency
         if strict:
             raise RuntimeError("spaCy is not installed")
         print("spaCy model not found; writing default morphology")
