@@ -420,3 +420,16 @@ python infer.py --checkpoint checkpoints/stgcn.pt \
 
 Sustituya `stgcn.pt` por `sttn.pt`, `corrnet_plus.pt` o `mcst.pt` para evaluar
 las otras arquitecturas.
+
+## 9. Benchmarks con Datos Públicos
+
+Se incluye un subconjunto de **LibriSpeech** en `tests/data/librispeech_subset.csv` para validar la precisión real mediante WER y CER.
+El script `scripts/wer_benchmark.py` calcula estas métricas para varias arquitecturas y guarda los resultados en un JSON opcional.
+
+Ejemplo de uso:
+
+```bash
+python scripts/wer_benchmark.py tests/data/librispeech_subset.csv --models model_a model_b --output docs/benchmark_results.json
+```
+
+Los resultados de referencia se documentan en `docs/benchmark_results.md`.
