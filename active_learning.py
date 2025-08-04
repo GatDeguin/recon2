@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 """Selecciona ejemplos de baja confianza para reentrenamiento."""
-import os
 import argparse
+import os
+import shutil
 from pathlib import Path
+from typing import List, Tuple
+
 import h5py
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from typing import List, Tuple
-import shutil
-import pandas as pd
 
 from train import SignDataset, collate, build_model
 
