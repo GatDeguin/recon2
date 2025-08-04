@@ -3,8 +3,8 @@ import os
 import time
 import uuid
 
-import torch
 from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
+import torch
 import uvicorn
 
 from .decoder import decode
@@ -12,7 +12,7 @@ from .feature_extraction import _extract_features, extract_features_from_bytes, 
 from .models import (
     GRPC_AVAILABLE,
     device,
-    logger,
+    logger as metrics_logger,
     load_models,
     model,
     onnx_sess,
@@ -33,7 +33,7 @@ def _load_models() -> None:
 @app.on_event("shutdown")
 def _close_logger() -> None:
     """Ensure metrics database is closed on shutdown."""
-    logger.close()
+    metrics_logger.close()
 
 
 @app.post("/transcribe")
@@ -52,7 +52,7 @@ async def transcribe(files: list[UploadFile] = File(...)):
         feats_list.append(extract_features_from_bytes(data))
         latency = time.time() - start
         fps = feats_list[-1].shape[2] / latency if latency > 0 else 0.0
-        logger.log(latency=latency, fps=fps)
+        metrics_logger.log(latency=latency, fps=fps)
 
     batch = pad_batch(feats_list)
 
@@ -108,7 +108,7 @@ async def websocket_endpoint(ws: WebSocket):
             else:
                 transcript = ""
 
-            logger.log(latency=latency, fps=fps)
+            metrics_logger.log(latency=latency, fps=fps)
             await ws.send_json({"transcript": transcript})
     except WebSocketDisconnect:
         log.warning("Client disconnected")
