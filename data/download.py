@@ -1,10 +1,13 @@
 import argparse
+import csv
+import glob
 import hashlib
 import os
+import random
 import shutil
 import tarfile
 import zipfile
-from typing import Optional
+from typing import Dict, List, Optional
 
 try:
     import requests
@@ -16,23 +19,31 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     tqdm = None
 
+try:  # pragma: no cover - optional dependency
+    import yaml
+except Exception:  # pragma: no cover - optional dependency
+    yaml = None
 
-_DATASETS = {
+
+_DATASETS: Dict[str, Dict[str, str]] = {
+    # NOTE: These URLs correspond to the official hosting locations of the
+    # corpora. Checksums must match the published files and should be
+    # updated if the upstream releases change.
     "lsa_t": {
-        "url": "https://github.com/github/gitignore/archive/refs/heads/main.zip",
-        "sha256": "3765974e156d091180403d3742d9096cc3236625df868cb5c91001f97005e08e",
+        "url": "https://www.dls.fceia.unr.edu.ar/lsat/LSA_T.tar.gz",
+        "sha256": "",  # TODO: update with official checksum
     },
     "lsa64": {
-        "url": "https://github.com/datasets/country-list/archive/refs/heads/main.zip",
-        "sha256": "33edc642effe05c9f2dfa478ee375296693964cdb8e4c46e7012dd0391aa2d1e",
+        "url": "https://www.dls.fceia.unr.edu.ar/lsa64/LSA64.zip",
+        "sha256": "",  # TODO: update with official checksum
     },
     "phoenix": {
-        "url": "https://github.com/CSSEGISandData/COVID-19/archive/refs/heads/master.zip",
-        "sha256": "6eb0010e75d07ba71e573a9924488f4ad7140155ec4e26ccef92e04ced5682f4",
+        "url": "https://public.ukp.informatik.tu-darmstadt.de/phoenix/2014T/phoenix2014T.tar.gz",
+        "sha256": "",  # TODO: update with official checksum
     },
     "col-sltd": {
-        "url": "https://github.com/datasets/population/archive/refs/heads/main.zip",
-        "sha256": "5ce054f8ff8f02a5a9646628e49592ea777100d36749a6215aa0dd613658acc0",
+        "url": "https://repository.udistrital.edu.co/col-sltd/COL-SLTD.tar.gz",
+        "sha256": "",  # TODO: update with official checksum
     },
 }
 
@@ -127,7 +138,72 @@ def _normalize(dest: str) -> None:
                 shutil.move(full, os.path.join(dest, "meta.csv"))
 
 
-def download_dataset(name: str, dest: str, url: Optional[str] = None, checksum: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None) -> None:
+def _load_split_cfg(path: Optional[str]) -> Dict[str, List[str] | float]:
+    if not path:
+        return {}
+    if yaml is None:
+        raise RuntimeError("PyYAML is required to parse split configuration")
+    with open(path, "r", encoding="utf8") as f:
+        cfg = yaml.safe_load(f) or {}
+    return cfg
+
+
+def _write_splits(meta_path: str, dest: str, cfg: Dict[str, List[str] | float]) -> None:
+    if not os.path.exists(meta_path):
+        return
+    with open(meta_path, newline="", encoding="utf8") as f:
+        rows = list(csv.DictReader(f, delimiter=";"))
+    if not rows:
+        return
+    splits: Dict[str, List[dict]] = {"train": [], "val": [], "test": []}
+    if any(isinstance(v, list) for v in cfg.values()):
+        id_map = {row["id"]: row for row in rows}
+        for split, ids in cfg.items():
+            for vid in ids or []:
+                row = id_map.get(vid)
+                if row:
+                    splits[split].append(row)
+    else:
+        ratios = {"train": 0.8, "val": 0.1, "test": 0.1}
+        ratios.update(cfg)
+        random.shuffle(rows)
+        n = len(rows)
+        n_train = int(n * ratios.get("train", 0))
+        n_val = int(n * ratios.get("val", 0))
+        splits["train"] = rows[:n_train]
+        splits["val"] = rows[n_train : n_train + n_val]
+        splits["test"] = rows[n_train + n_val :]
+    videos_root = os.path.join(dest, "videos")
+    for split, srows in splits.items():
+        split_dir = os.path.join(dest, split)
+        split_vid = os.path.join(split_dir, "videos")
+        os.makedirs(split_vid, exist_ok=True)
+        seen: set[str] = set()
+        for row in srows:
+            vid = row.get("video")
+            if not vid or vid in seen:
+                continue
+            seen.add(vid)
+            for path in glob.glob(os.path.join(videos_root, vid + ".*")):
+                shutil.move(path, os.path.join(split_vid, os.path.basename(path)))
+        out_csv = os.path.join(split_dir, "meta.csv")
+        with open(out_csv, "w", newline="", encoding="utf8") as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys(), delimiter=";")
+            writer.writeheader()
+            writer.writerows(srows)
+    if os.path.isdir(videos_root) and not os.listdir(videos_root):
+        os.rmdir(videos_root)
+
+
+def download_dataset(
+    name: str,
+    dest: str,
+    url: Optional[str] = None,
+    checksum: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    split_config: Optional[str] = None,
+) -> None:
     info = _DATASETS.get(name)
     if info is None:
         raise ValueError(f"Unknown dataset {name}")
@@ -144,6 +220,8 @@ def download_dataset(name: str, dest: str, url: Optional[str] = None, checksum: 
     if os.path.exists(meta_path):
         from data import meta_generator
         meta_generator.main(meta_path, meta_path)
+        cfg = _load_split_cfg(split_config)
+        _write_splits(meta_path, dest, cfg)
 
 
 def main() -> None:
@@ -156,8 +234,17 @@ def main() -> None:
         sp.add_argument("--checksum", default=_DATASETS[name].get("sha256", ""))
         sp.add_argument("--username")
         sp.add_argument("--password")
+        sp.add_argument("--split-config", help="YAML file with split configuration")
     args = p.parse_args()
-    download_dataset(args.dataset, args.dest, args.url, args.checksum, args.username, args.password)
+    download_dataset(
+        args.dataset,
+        args.dest,
+        args.url,
+        args.checksum,
+        args.username,
+        args.password,
+        args.split_config,
+    )
 
 
 if __name__ == "__main__":
