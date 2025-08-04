@@ -1,21 +1,47 @@
 # Default configuration for scripts
 
 dataset:
+  # HDF5 file with raw skeleton sequences
   h5_file: data/data.h5
+  # HDF5 file with precomputed features
+  features_h5: data/features.h5
+  # CSV file mapping samples to labels
   csv_file: data/labels.csv
+  # Optional domain split file; use null for none
   domain_csv: null
+  # Vocabulary file for tokenization
+  vocab: vocab.txt
 
 checkpoints:
+  # Directory to store model checkpoints
   dir: checkpoints
+  # Pretrained teacher checkpoint
   teacher_ckpt: checkpoints/teacher.pt
 
 model:
+  # Model architecture (e.g., stgcn, lstm)
   arch: stgcn
 
 hyperparameters:
+  # Number of training epochs (>=1)
   epochs: 10
+  # Samples per batch (1-1024)
   batch_size: 4
+  # Warmup sequence length (>=0)
   initial_length: 0
+  # Strategy for increasing sequence length
   length_schedule: ""
+  # Probability of masking joints (0-1)
   mask_prob: 0.15
+  # Base sequence length for training (>=1)
   seq_len: 16
+  # Initial optimizer learning rate (1e-6-1e-1)
+  learning_rate: 0.001
+  # Number of joints per frame (1-1000)
+  joint_count: 33
+  # Maximum allowed sequence length (>=1)
+  max_seq_len: 128
+  # Weight for pose reconstruction loss (>=0)
+  pose_loss_weight: 1.0
+  # Weight for auxiliary loss (>=0)
+  aux_loss_weight: 0.1
