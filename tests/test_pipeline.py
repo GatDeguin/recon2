@@ -1,5 +1,5 @@
-import os
 import sys
+import os
 from types import SimpleNamespace
 
 import numpy as np
