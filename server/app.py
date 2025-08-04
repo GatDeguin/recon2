@@ -109,7 +109,8 @@ async def websocket_endpoint(ws: WebSocket):
             logger.log(latency=latency, fps=fps)
             await ws.send_json({"transcript": transcript})
     except WebSocketDisconnect:
-        pass
+        logger.log(class_acc={"message": "Client disconnected."})
+        await ws.close()
 
 
 if __name__ == "__main__":
