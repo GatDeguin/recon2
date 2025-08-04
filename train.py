@@ -8,9 +8,9 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
-from typing import Tuple
 
 from metrics import MetricsLogger
+from evaluate import compute_metrics
 from models.stgcn import STGCN
 from models.sttn import STTN
 from models.corrnet import CorrNetPlus
@@ -368,56 +368,6 @@ def build_model(
     raise ValueError(f'Unknown model: {name}')
 
 
-def evaluate(model: nn.Module, dl: DataLoader, inv_vocab: dict, device: torch.device) -> Tuple[float, float]:
-    """Compute simple WER and NMM accuracy on the provided dataloader."""
-    try:
-        from jiwer import wer
-    except Exception:
-        wer = None
-    model.eval()
-    total_words = 0
-    word_errs = 0
-    correct_nmm = 0
-    count_nmm = 0
-    with torch.no_grad():
-        for batch in dl:
-            (
-                feats,
-                labels,
-                feat_lens,
-                label_lens,
-                domains,
-                nmm_lbls,
-                *_,
-            ) = batch
-            feats = feats.to(device)
-            labels = labels.to(device)
-            nmm_lbls = nmm_lbls.to(device)
-            logits, nmm_logits, _ = model(feats)
-            preds = logits.argmax(-1)
-            for p, t in zip(preds, labels):
-                pred_tokens = []
-                last = 0
-                skip = {0, 1, 2}
-                for tok in p.tolist():
-                    if tok not in skip and tok != last:
-                        pred_tokens.append(inv_vocab.get(tok, ""))
-                    last = tok
-                tgt_tokens = [inv_vocab.get(int(x), "") for x in t if int(x) not in skip]
-                hyp = " ".join(pred_tokens).strip()
-                ref = " ".join(tgt_tokens).strip()
-                if wer:
-                    word_errs += wer(ref, hyp) * len(ref.split())
-                total_words += len(ref.split())
-            if nmm_logits is not None:
-                pred_nmm = nmm_logits.argmax(-1)
-                correct_nmm += (pred_nmm.cpu() == nmm_lbls.cpu()).sum().item()
-                count_nmm += len(nmm_lbls)
-    wer_val = word_errs / total_words if total_words else 0.0
-    nmm_acc = correct_nmm / count_nmm if count_nmm else 0.0
-    return wer_val, nmm_acc
-
-
 def train(args):
     with SignDataset(
         args.h5_file,
@@ -569,8 +519,13 @@ def train(args):
                 'vocab': ds.vocab
             }, f'checkpoints/epoch_{epoch+1}.pt')
 
-            wer_val, nmm_acc = evaluate(model, dl, inv_vocab, device)
-            logger.log(wer=wer_val, nmm_acc=nmm_acc)
+            wer_val, cer_val, class_acc = compute_metrics(model, dl, inv_vocab, device)
+            logger.log(
+                wer=wer_val,
+                cer=cer_val,
+                nmm_acc=class_acc.get("nmm"),
+                class_acc=class_acc,
+            )
 
         logger.close()
         with open('vocab.txt', 'w', encoding='utf-8') as f:
