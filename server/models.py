@@ -5,6 +5,7 @@ import mediapipe as mp
 from ultralytics import YOLO
 
 from metrics import MetricsLogger
+from .decoder import init_decoder, decode
 
 try:  # optional dependency for YOLOX and ONNX backend
     import onnxruntime as ort
@@ -30,12 +31,18 @@ device = "cpu"
 _MODELS_LOADED = False
 
 
-def load_models() -> None:
-    """Load detection and transcription models.
+def load_models(
+    lm_ckpt: str | None = None,
+    *,
+    beam_size: int | None = None,
+    lm_weight: float | None = None,
+) -> None:
+    """Load detection, transcription and optional language models.
 
-    Environment variables are read at call time so that model loading
-    respects values set before invocation. Subsequent calls are no-ops.
+    Parameters are optional; if not provided, corresponding environment
+    variables are used. Subsequent calls are no-ops once models are loaded.
     """
+
     global mp_holistic, yolox_sess, yolo_model, holistic_model
     global model, onnx_sess, device, _MODELS_LOADED
 
@@ -83,6 +90,15 @@ def load_models() -> None:
         except Exception:  # pragma: no cover - optional dependency
             model = None
 
+    if lm_ckpt is None:
+        lm_ckpt = os.environ.get("LM_CKPT")
+    if beam_size is None:
+        beam_size = int(os.environ.get("BEAM_SIZE", "5"))
+    if lm_weight is None:
+        lm_weight = float(os.environ.get("LM_WEIGHT", "0.5"))
+
+    init_decoder(lm_ckpt, beam_size=beam_size, lm_weight=lm_weight)
+
     _MODELS_LOADED = True
 
 
@@ -104,7 +120,6 @@ def start_grpc_server(port: int = 50051):
     from concurrent import futures
     from server.protos import transcriber_pb2, transcriber_pb2_grpc
     from .feature_extraction import extract_features_from_bytes
-    from .decoder import decode
 
     class TranscriberService(transcriber_pb2_grpc.TranscriberServicer):
         def Transcribe(self, request, context):
