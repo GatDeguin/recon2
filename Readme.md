@@ -203,7 +203,26 @@ ds = SignDataset("data.h5", "labels.csv", augment=lambda x: speed_perturbation(x
 
 ### 4.3 Adaptación Adversarial de Dominio
 
-Se integra un **Gradient Reversal Layer** (DANN) para alinear las características entre LSA‑T y otros corpus (ASL, GSL), reduciendo el gap de dominio y mejorando la generalización .
+Se integra un **Gradient Reversal Layer** (DANN) para alinear las características entre LSA‑T y otros corpus (ASL, GSL), reduciendo el gap de dominio y mejorando la generalización.
+
+El entrenamiento adversarial se activa con `--adversarial` y requiere un CSV que indique el dominio de cada muestra. El archivo debe contener dos columnas separadas por `;`: `id` (identificador del video) y `domain` (entero empezando en 0). Un ejemplo se provee en `data/domain_labels_example.csv`.
+
+```csv
+id;domain
+0001;0
+0002;1
+0003;0
+```
+
+Para entrenar con DANN:
+
+```bash
+python train.py --h5_file datos.h5 --csv_file labels.csv \
+  --domain_csv data/domain_labels_example.csv --adversarial \
+  --adv_mix_rate 1.0 --adv_weight 0.1 --adv_steps 1
+```
+
+Los parámetros `--adv_mix_rate` controla la lambda del gradiente invertido, `--adv_weight` pondera la pérdida adversarial y `--adv_steps` define cuántas iteraciones de actualización se realizan sobre el discriminador por batch.
 
 ---
 

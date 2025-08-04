@@ -7,7 +7,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from train import SignDataset, collate, build_model, evaluate
+from train import SignDataset, collate, build_model
+from evaluate import compute_metrics
 from models.stgcn import STGCNBlock
 from models.sttn import STTN
 from models.corrnet import CorrNetPlus
@@ -38,6 +39,8 @@ class STGCNStudent(nn.Module):
                 from utils.build_adjacency import build_adjacency
 
                 A = build_adjacency(cfg_path)
+                if A.shape[0] != num_nodes:
+                    A = torch.eye(num_nodes)
             except Exception:
                 A = torch.eye(num_nodes)
         else:
@@ -160,7 +163,7 @@ def build_student_model(
 
 
 def distill(args: argparse.Namespace) -> None:
-    with SignDataset(args.h5_file, args.csv_file, args.domain_labels) as ds:
+    with SignDataset(args.h5_file, args.csv_file, args.domain_csv) as ds:
         dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         inv_vocab = {v: k for k, v in ds.vocab.items()}
@@ -218,9 +221,13 @@ def distill(args: argparse.Namespace) -> None:
                 nmm_lbls = nmm_lbls.to(device)
 
                 with torch.no_grad():
-                    teach_logits, teach_nmm, _ = teacher(feats)
+                    teach_outputs = teacher(feats)
+                    teach_logits = teach_outputs[0]
+                    teach_nmm = teach_outputs[1]
 
-                stud_logits, stud_nmm, _ = student(feats)
+                stud_outputs = student(feats)
+                stud_logits = stud_outputs[0]
+                stud_nmm = stud_outputs[1]
 
                 outputs = stud_logits.permute(1, 0, 2)
                 targets = labels.flatten()
@@ -244,8 +251,10 @@ def distill(args: argparse.Namespace) -> None:
                 f"checkpoints/student_epoch_{epoch+1}.pt",
             )
 
-        teacher_wer, teacher_nmm = evaluate(teacher, dl, inv_vocab, device)
-        student_wer, student_nmm = evaluate(student, dl, inv_vocab, device)
+        teacher_wer, _, teacher_acc = compute_metrics(teacher, dl, inv_vocab, device)
+        student_wer, _, student_acc = compute_metrics(student, dl, inv_vocab, device)
+        teacher_nmm = teacher_acc.get("nmm", 0.0)
+        student_nmm = student_acc.get("nmm", 0.0)
         print(f"Teacher WER {teacher_wer:.4f} | NMM {teacher_nmm:.4f}")
         print(f"Student WER {student_wer:.4f} | NMM {student_nmm:.4f}")
 
@@ -263,7 +272,7 @@ if __name__ == "__main__":
     )
     p.add_argument("--batch_size", type=int)
     p.add_argument("--epochs", type=int)
-    p.add_argument("--domain_labels", help="CSV con etiquetas de dominio opcional")
+    p.add_argument("--domain_csv", help="CSV con etiquetas de dominio opcional")
     args = p.parse_args()
 
     cfg_path = Path(__file__).resolve().parent / "configs" / "config.yaml"
