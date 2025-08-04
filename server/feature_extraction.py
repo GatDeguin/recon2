@@ -1,7 +1,7 @@
 import os
-import tempfile
-import subprocess
 import shutil
+import subprocess
+import tempfile
 from typing import Optional
 
 import cv2
