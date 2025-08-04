@@ -1,0 +1,39 @@
+openapi: 3.0.0
+info:
+  title: Recon2 API
+  version: "1.0"
+paths:
+  /transcribe:
+    post:
+      summary: Transcribe uploaded video files.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transcripts:
+                    type: array
+                    items:
+                      type: string
+  /ws:
+    get:
+      summary: WebSocket endpoint for streaming transcription.
+      description: Clients send video data over WebSocket and receive transcripts.
+      responses:
+        '101':
+          description: Switching Protocols
