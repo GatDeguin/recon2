@@ -1,7 +1,7 @@
+import os
 import argparse
 from pathlib import Path
-import os
-from typing import Dict, List, Tuple
+from typing import List, Dict
 
 import h5py
 import numpy as np
