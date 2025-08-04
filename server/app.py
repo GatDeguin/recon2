@@ -1,6 +1,7 @@
 import os
 import time
 import uuid
+import logging
 
 import torch
 from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
@@ -19,6 +20,7 @@ from .models import (
 )
 
 
+log = logging.getLogger(__name__)
 app = FastAPI()
 
 
@@ -109,7 +111,7 @@ async def websocket_endpoint(ws: WebSocket):
             logger.log(latency=latency, fps=fps)
             await ws.send_json({"transcript": transcript})
     except WebSocketDisconnect:
-        logger.log(class_acc={"message": "Client disconnected."})
+        log.warning("Client disconnected")
         await ws.close()
 
 
