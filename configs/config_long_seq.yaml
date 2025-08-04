@@ -1,0 +1,23 @@
+# Training with longer input sequences
+
+dataset:
+  h5_file: data/data.h5
+  features_h5: data/features.h5
+  csv_file: data/labels.csv
+  vocab: vocab.txt
+
+checkpoints:
+  dir: checkpoints
+  teacher_ckpt: null
+
+model:
+  arch: stgcn
+
+hyperparameters:
+  epochs: 10
+  batch_size: 2
+  initial_length: 16
+  length_schedule: linear
+  seq_len: 64
+  max_seq_len: 256
+  learning_rate: 0.001

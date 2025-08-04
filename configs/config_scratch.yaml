@@ -1,0 +1,21 @@
+# Training from scratch with minimal defaults
+
+dataset:
+  h5_file: data/data.h5
+  features_h5: data/features.h5
+  csv_file: data/labels.csv
+  vocab: vocab.txt
+
+checkpoints:
+  dir: checkpoints
+  teacher_ckpt: null
+
+model:
+  arch: stgcn
+
+hyperparameters:
+  epochs: 20
+  batch_size: 8
+  seq_len: 32
+  max_seq_len: 128
+  learning_rate: 0.001
