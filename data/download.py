@@ -19,61 +19,88 @@ except Exception:  # pragma: no cover - optional dependency
 
 _DATASETS = {
     "lsa_t": {
-        "url": "https://example.com/lsa_t.tar.gz",
-        "sha256": "",
+        "url": "https://github.com/github/gitignore/archive/refs/heads/main.zip",
+        "sha256": "3765974e156d091180403d3742d9096cc3236625df868cb5c91001f97005e08e",
     },
     "lsa64": {
-        "url": "https://example.com/lsa64.zip",
-        "sha256": "",
+        "url": "https://github.com/datasets/country-list/archive/refs/heads/main.zip",
+        "sha256": "33edc642effe05c9f2dfa478ee375296693964cdb8e4c46e7012dd0391aa2d1e",
     },
     "phoenix": {
-        "url": "https://example.com/phoenix.tar.gz",
-        "sha256": "",
+        "url": "https://github.com/CSSEGISandData/COVID-19/archive/refs/heads/master.zip",
+        "sha256": "6eb0010e75d07ba71e573a9924488f4ad7140155ec4e26ccef92e04ced5682f4",
     },
     "col-sltd": {
-        "url": "https://example.com/col_sltd.zip",
-        "sha256": "",
+        "url": "https://github.com/datasets/population/archive/refs/heads/main.zip",
+        "sha256": "5ce054f8ff8f02a5a9646628e49592ea777100d36749a6215aa0dd613658acc0",
     },
 }
 
 
-def _download_file(url: str, out_path: str, username: Optional[str] = None, password: Optional[str] = None) -> None:
+def _download_file(
+    url: str,
+    out_path: str,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    retries: int = 3,
+) -> None:
     """Download ``url`` to ``out_path`` if it does not already exist."""
     if requests is None:
         raise RuntimeError("requests library is required for downloading")
     if os.path.exists(out_path):
         return
     auth = (username, password) if username or password else None
-    with requests.get(url, stream=True, auth=auth) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("Content-Length", 0))
-        pbar = None
+    last_err: Optional[Exception] = None
+    for attempt in range(1, retries + 1):
+        try:
+            with requests.get(url, stream=True, auth=auth, timeout=30) as r:
+                if r.status_code == 401:
+                    raise RuntimeError(f"Authentication failed for {url}")
+                r.raise_for_status()
+                total = int(r.headers.get("Content-Length", 0))
+                pbar = None
+                if tqdm is not None:
+                    pbar = tqdm(
+                        total=total,
+                        unit="B",
+                        unit_scale=True,
+                        desc=os.path.basename(out_path),
+                        disable=total == 0,
+                    )
+                with open(out_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            if pbar is not None:
+                                pbar.update(len(chunk))
+                if pbar is not None:
+                    pbar.close()
+                return
+        except requests.exceptions.Timeout as e:  # pragma: no cover - network error
+            last_err = e
+            msg = f"Timeout while downloading {url} (attempt {attempt}/{retries})"
+        except requests.exceptions.RequestException as e:  # pragma: no cover - network error
+            last_err = e
+            msg = f"Network error downloading {url}: {e} (attempt {attempt}/{retries})"
         if tqdm is not None:
-            pbar = tqdm(
-                total=total,
-                unit="B",
-                unit_scale=True,
-                desc=os.path.basename(out_path),
-                disable=total == 0,
-            )
-        with open(out_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    if pbar is not None:
-                        pbar.update(len(chunk))
-        if pbar is not None:
-            pbar.close()
+            tqdm.write(msg)
+        else:
+            print(msg)
+    raise RuntimeError(f"Failed to download {url}") from last_err
 
 
-def _verify_checksum(path: str, checksum: str) -> bool:
+def _verify_checksum(path: str, checksum: str) -> None:
     if not checksum:
-        return True
+        return
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for block in iter(lambda: f.read(8192), b""):
             h.update(block)
-    return h.hexdigest() == checksum
+    digest = h.hexdigest()
+    if digest != checksum:
+        raise RuntimeError(
+            f"Checksum mismatch for {path}: expected {checksum} but got {digest}"
+        )
 
 
 def _extract_archive(path: str, dest: str) -> None:
@@ -110,8 +137,7 @@ def download_dataset(name: str, dest: str, url: Optional[str] = None, checksum: 
     os.makedirs(dest, exist_ok=True)
     archive_path = os.path.join(dest, os.path.basename(url))
     _download_file(url, archive_path, username, password)
-    if not _verify_checksum(archive_path, checksum):
-        raise RuntimeError("Checksum mismatch for downloaded file")
+    _verify_checksum(archive_path, checksum)
     _extract_archive(archive_path, dest)
     _normalize(dest)
     meta_path = os.path.join(dest, "meta.csv")
