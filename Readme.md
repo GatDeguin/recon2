@@ -35,6 +35,21 @@ Instale PyTorch con la versi\xC3\xB3n de CUDA apropiada desde [pytorch.org](http
 - `LM_CKPT`: checkpoint del modelo de lenguaje opcional.
 - `BEAM_SIZE` y `LM_WEIGHT`: par\xC3\xA1metros del decodificador beam-search.
 
+### Uso de la API
+
+Para exponer el servicio de transcripción ejecute:
+
+```bash
+uvicorn server.app:app
+```
+
+Endpoints disponibles:
+
+- `POST /transcribe`: recibe archivos de video en el campo `files` y devuelve glosas transcritas.
+- `WebSocket /ws`: envíe fragmentos de video y reciba transcripciones en tiempo real.
+
+La especificación de OpenAPI se encuentra en `server/openapi.yaml`.
+
 
 ## 1. Adquisición y Anotación de Datos
 
