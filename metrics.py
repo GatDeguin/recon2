@@ -18,7 +18,9 @@ class MetricsLogger:
                 CREATE TABLE IF NOT EXISTS metrics (
                     timestamp TEXT,
                     wer REAL,
+                    cer REAL,
                     nmm_acc REAL,
+                    class_acc TEXT,
                     latency REAL,
                     fps REAL
                 )
@@ -29,17 +31,28 @@ class MetricsLogger:
     def log(
         self,
         wer: Optional[float] = None,
+        cer: Optional[float] = None,
         nmm_acc: Optional[float] = None,
+        class_acc: Optional[dict] = None,
         latency: Optional[float] = None,
         fps: Optional[float] = None,
     ) -> None:
+        """Insert a new metrics row into the database."""
+        import json
+
         with closing(self.conn.cursor()) as cur:
             cur.execute(
-                "INSERT INTO metrics (timestamp, wer, nmm_acc, latency, fps) VALUES (?, ?, ?, ?, ?)",
+                """
+                INSERT INTO metrics
+                    (timestamp, wer, cer, nmm_acc, class_acc, latency, fps)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     datetime.utcnow().isoformat(),
                     wer,
+                    cer,
                     nmm_acc,
+                    json.dumps(class_acc) if class_acc is not None else None,
                     latency,
                     fps,
                 ),
