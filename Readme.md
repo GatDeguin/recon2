@@ -87,6 +87,29 @@ Endpoints disponibles:
 
 La especificación de OpenAPI se encuentra en `server/openapi.yaml`.
 
+### Cliente web
+
+Se incluye un cliente mínimo en `frontend/index.html` que captura la cámara o
+permite cargar un archivo de video y envía fragmentos al backend mediante
+WebSocket, mostrando la transcripción recibida en tiempo real.
+
+1. Inicie el backend:
+
+   ```bash
+   uvicorn server.app:app
+   ```
+
+2. Sirva la carpeta `frontend` con un servidor estático, por ejemplo:
+
+   ```bash
+   cd frontend
+   python -m http.server 3000
+   ```
+
+3. Abra `http://localhost:3000` en el navegador. Al seleccionar un archivo de
+   video o permitir el acceso a la cámara, el cliente enviará datos al backend
+   (`ws://localhost:8000/ws`) y mostrará las glosas transcritas.
+
 ### Servidor gRPC
 
 El servicio también expone una interfaz gRPC definida en `server/protos/transcriber.proto`.
