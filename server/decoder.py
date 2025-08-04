@@ -1,5 +1,6 @@
 import logging
-import os
+from typing import Optional
+
 import torch
 
 from infer import beam_search
@@ -20,16 +21,38 @@ SOS_TOKEN = 1
 EOS_TOKEN = 2
 
 # Optional language model and beam-search params
-LM_CKPT = os.environ.get("LM_CKPT")
-BEAM_SIZE = int(os.environ.get("BEAM_SIZE", "5"))
-LM_WEIGHT = float(os.environ.get("LM_WEIGHT", "0.5"))
-lm_model = None
-if LM_CKPT:
-    try:
-        lm_model = load_model(LM_CKPT, vocab_size=len(vocab))
-    except Exception as e:
-        logger.warning("Failed to load language model from %s: %s", LM_CKPT, e)
-        lm_model = None
+lm_model: Optional[torch.nn.Module] = None
+BEAM_SIZE = 5
+LM_WEIGHT = 0.5
+
+
+def init_decoder(
+    lm_ckpt: Optional[str] = None, *, beam_size: int = 5, lm_weight: float = 0.5
+) -> None:
+    """Configure decoder with optional language model.
+
+    Parameters
+    ----------
+    lm_ckpt: Optional[str]
+        Path to a language-model checkpoint. If ``None`` or loading fails,
+        decoding will proceed without an LM.
+    beam_size: int
+        Beam width for search when decoding.
+    lm_weight: float
+        Weight of the language model during beam search.
+    """
+
+    global lm_model, BEAM_SIZE, LM_WEIGHT
+    BEAM_SIZE = beam_size
+    LM_WEIGHT = lm_weight
+    lm_model = None
+
+    if lm_ckpt:
+        try:
+            lm_model = load_model(lm_ckpt, vocab_size=len(vocab))
+        except Exception as e:  # pragma: no cover - best effort
+            logger.warning("Failed to load language model from %s: %s", lm_ckpt, e)
+            lm_model = None
 
 
 def decode(logits: torch.Tensor) -> str:
