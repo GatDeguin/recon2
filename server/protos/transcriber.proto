@@ -1,3 +1,8 @@
+// gRPC interface for the sign language transcriber service.
+//
+// Regenerate Python stubs with:
+//   python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. transcriber.proto
+//
 syntax = "proto3";
 package transcriber;
 
