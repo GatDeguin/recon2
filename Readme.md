@@ -72,6 +72,36 @@ Instale PyTorch con la versi\xC3\xB3n de CUDA apropiada desde [pytorch.org](http
 - `LM_CKPT`: checkpoint del modelo de lenguaje opcional.
 - `BEAM_SIZE` y `LM_WEIGHT`: par\xC3\xA1metros del decodificador beam-search.
 
+### Entrenamiento del modelo de lenguaje
+
+El script `train_lm.py` construye un vocabulario y entrena un
+`TransformerLanguageModel` a partir de un corpus de transcripciones en texto
+plano. El flujo b\xE1sico es:
+
+1. `build_vocab` crea `vocab.txt` con los tokens encontrados en el corpus.
+2. `TextDataset` segmenta cada l\xEDnea en secuencias de entrada/salida,
+   agregando los tokens especiales `<sos>` y `<eos>`.
+3. `train_model` optimiza el modelo y se guarda el checkpoint resultante.
+
+Ejemplo de uso:
+
+```bash
+python train_lm.py corpus.txt --vocab vocab.txt --output checkpoints/lm.pt
+```
+
+Para aprovechar el LM durante la decodificaci\xF3n se carga con
+`models.transformer_lm.load_model` y se pasa al decodificador
+(`infer.py`):
+
+```python
+from models.transformer_lm import load_model
+lm = load_model("checkpoints/lm.pt", vocab_size=len(vocab))
+```
+
+En la interfaz de l\xEDnea de comandos, el mismo comportamiento se logra
+indicando los argumentos `--lm` y `--vocab` o definiendo la variable de
+entorno `LM_CKPT`.
+
 ### Uso de la API
 
 Para exponer el servicio de transcripción ejecute:
