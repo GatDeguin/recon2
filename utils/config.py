@@ -49,7 +49,12 @@ def load_config(path: str | Path) -> dict:
 
 
 def validate_config(args: SimpleNamespace) -> None:
-    """Emit warnings for out-of-range or inconsistent parameters."""
+    """Emit warnings for out-of-range or inconsistent parameters.
+
+    Recognizes optional flags for contrastive training (``contrastive``),
+    knowledge distillation (``distillation``) and vocabulary settings
+    (``vocab_size``).
+    """
 
     def warn(msg: str) -> None:
         warnings.warn(msg, stacklevel=2)
@@ -63,6 +68,10 @@ def validate_config(args: SimpleNamespace) -> None:
     tckpt = getattr(args, "teacher_ckpt", None)
     if tckpt and not Path(tckpt).exists():
         warn(f"teacher_ckpt path not found: {tckpt}")
+
+    vocab_size = getattr(args, "vocab_size", None)
+    if vocab_size is not None and vocab_size < 1:
+        warn("vocab_size should be >= 1")
 
     # hyperparameters
     if getattr(args, "epochs", 1) < 1:
@@ -86,6 +95,14 @@ def validate_config(args: SimpleNamespace) -> None:
         warn("pose_loss_weight should be >= 0")
     if getattr(args, "aux_loss_weight", 0) < 0:
         warn("aux_loss_weight should be >= 0")
+
+    # feature flags
+    for flag in ("contrastive", "distillation"):
+        val = getattr(args, flag, False)
+        if val not in (True, False):
+            warn(f"{flag} should be boolean")
+    if getattr(args, "distillation", False) and not getattr(args, "teacher_ckpt", None):
+        warn("distillation enabled but teacher_ckpt is missing")
 
     # adversarial training parameters
     if getattr(args, "adversarial", False):

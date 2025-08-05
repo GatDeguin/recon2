@@ -1,4 +1,4 @@
-# Knowledge distillation training example
+# Contrastive training example
 
 dataset:
   h5_file: data/data.h5
@@ -8,16 +8,14 @@ dataset:
 
 checkpoints:
   dir: checkpoints
-  teacher_ckpt: checkpoints/teacher.pt
 
 model:
   arch: stgcn
 
 hyperparameters:
-  distillation: true
   epochs: 10
   batch_size: 4
   seq_len: 16
   max_seq_len: 128
   learning_rate: 0.001
-  aux_loss_weight: 0.1
+  contrastive: true
