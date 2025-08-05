@@ -1,97 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Recon - Web Client</title>
-  <style>
-    body { font-family: sans-serif; text-align: center; }
-    video { width: 320px; height: 240px; border: 1px solid #ccc; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
-  <script type="text/javascript">
-  const {useState, useRef, useEffect} = React;
-
-  function App() {
-    const videoRef = useRef(null);
-    const socketRef = useRef(null);
-    const recorderRef = useRef(null);
-    const [transcript, setTranscript] = useState('');
-    const [status, setStatus] = useState('Connecting...');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    useEffect(() => {
-      // Connect to backend
-      const wsUrl = 'ws://' + location.hostname + ':8000/ws';
-      socketRef.current = new WebSocket(wsUrl);
-      socketRef.current.onopen = () => setStatus('Connected');
-      socketRef.current.onclose = () => {
-        setStatus('Disconnected');
-        setLoading(false);
-      };
-      socketRef.current.onerror = () => setError('WebSocket error');
-      socketRef.current.onmessage = ev => {
-        const data = JSON.parse(ev.data);
-        setTranscript(data.transcript || '');
-        if (data.error) setError(data.error); else setError('');
-        setLoading(false);
-      };
-      return () => socketRef.current && socketRef.current.close();
-    }, []);
-
-    const setupRecorder = stream => {
-      recorderRef.current = new MediaRecorder(stream, {mimeType: 'video/webm'});
-      recorderRef.current.ondataavailable = ev => {
-        if (ev.data.size > 0 && socketRef.current.readyState === 1) {
-          setLoading(true);
-          socketRef.current.send(ev.data);
-        }
-      };
-      recorderRef.current.start(2000);
-    };
-
-    // Start webcam by default
-    useEffect(() => {
-      navigator.mediaDevices.getUserMedia({video: true})
-        .then(stream => {
-          videoRef.current.srcObject = stream;
-          setupRecorder(stream);
-        })
-        .catch(err => setError('Camera error: ' + err.message));
-    }, []);
-
-    const handleFile = e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (recorderRef.current) recorderRef.current.stop();
-      videoRef.current.srcObject = null;
-      videoRef.current.src = URL.createObjectURL(file);
-      videoRef.current.onloadedmetadata = () => {
-        videoRef.current.play();
-        const stream = videoRef.current.captureStream();
-        setupRecorder(stream);
-      };
-    };
-
-    return React.createElement('div', null,
-      React.createElement('h1', null, 'Live Transcription'),
-      React.createElement('video', {ref: videoRef, autoPlay: true, controls: true, playsInline: true}),
-      React.createElement('div', null,
-        React.createElement('input', {type: 'file', accept: 'video/*', onChange: handleFile})
-      ),
-      React.createElement('p', null, 'Status: ' + status),
-      loading ? React.createElement('p', null, 'Transcribing...') : null,
-      error ? React.createElement('p', {style: {color: 'red'}}, error) : null,
-      React.createElement('p', null, transcript)
-    );
-  }
-
-  ReactDOM.render(React.createElement(App), document.getElementById('root'));
-  </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Recon - Web Client</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>
-

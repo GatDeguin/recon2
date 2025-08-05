@@ -10,6 +10,10 @@ __pycache__/
 logs/
 checkpoints/
 
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+
 # Ignore exported models
 *.onnx
 

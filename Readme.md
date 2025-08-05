@@ -87,11 +87,21 @@ Endpoints disponibles:
 
 La especificación de OpenAPI se encuentra en `server/openapi.yaml`.
 
-### Cliente web
+### Cliente web (React)
 
-Se incluye un cliente mínimo en `frontend/index.html` que captura la cámara o
-permite cargar un archivo de video y envía fragmentos al backend mediante
-WebSocket, mostrando la transcripción recibida en tiempo real.
+El repositorio incluye el c\xF3digo fuente del cliente React en `frontend/`.
+Para instalar las dependencias y compilar la versi\xF3n de producci\xF3n:
+
+```bash
+cd frontend
+npm install
+npm run build  # genera la carpeta dist/
+```
+
+Durante el desarrollo puede ejecutarse `npm run dev` para levantar un servidor
+de Vite con recarga en caliente.
+
+Para desplegar el frontend junto al backend:
 
 1. Inicie el backend:
 
@@ -99,16 +109,31 @@ WebSocket, mostrando la transcripción recibida en tiempo real.
    uvicorn server.app:app
    ```
 
-2. Sirva la carpeta `frontend` con un servidor estático, por ejemplo:
+2. En otra terminal sirva el frontend compilado:
 
    ```bash
    cd frontend
-   python -m http.server 3000
+   npm run preview  # o cualquier servidor est\xE1tico sobre dist/
    ```
 
-3. Abra `http://localhost:3000` en el navegador. Al seleccionar un archivo de
-   video o permitir el acceso a la cámara, el cliente enviará datos al backend
-   (`ws://localhost:8000/ws`) y mostrará las glosas transcritas.
+3. Abra `http://localhost:4173` (o el puerto indicado) en el navegador. Al
+   seleccionar un archivo de video o permitir el acceso a la c\xE1mara, el
+   cliente enviar\xE1 datos al backend (`ws://localhost:8000/ws`) y mostrar\xE1
+   las glosas transcritas en tiempo real.
+
+### Verificaci\xF3n manual de WebSocket
+
+Para comprobar la comunicaci\xF3n WebSocket extremo a extremo:
+
+1. Inicie el backend como se muestra arriba.
+2. Ejecute el script:
+
+   ```bash
+   python scripts/ws_e2e_check.py
+   ```
+
+   El script enviar\xE1 un peque\xF1o fragmento de `demo.mp4` al endpoint
+   y mostrar\xE1 la respuesta JSON recibida.
 
 ### Servidor gRPC
 
