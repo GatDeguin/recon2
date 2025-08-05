@@ -64,7 +64,7 @@ def test_normalize(tmp_path):
     assert not csv_file.exists()
 
 
-def test_write_splits(tmp_path):
+def test_write_splits_from_cfg(tmp_path):
     dest = tmp_path / "dataset"
     videos = dest / "videos"
     videos.mkdir(parents=True)
@@ -85,5 +85,35 @@ def test_write_splits(tmp_path):
         with open(split_dir / "meta.csv", newline="", encoding="utf8") as f:
             rows = list(csv.DictReader(f, delimiter=";"))
         assert rows == [{"id": next(iter(cfg[split])), "video": vid}]
+
+    assert not videos.exists()
+
+
+def test_write_splits_from_meta(tmp_path):
+    dest = tmp_path / "dataset"
+    videos = dest / "videos"
+    videos.mkdir(parents=True)
+
+    for vid in ["a", "b", "c"]:
+        (videos / f"{vid}.mp4").write_text("vid")
+
+    meta = dest / "meta.csv"
+    meta.write_text(
+        "id;video;split\n1;a;train\n2;b;val\n3;c;test\n"
+    )
+
+    _write_splits(str(meta), str(dest), {})
+
+    expected = {
+        "train": {"id": "1", "video": "a", "split": "train"},
+        "val": {"id": "2", "video": "b", "split": "val"},
+        "test": {"id": "3", "video": "c", "split": "test"},
+    }
+    for split, row in expected.items():
+        split_dir = dest / split
+        assert (split_dir / "videos" / f"{row['video']}.mp4").exists()
+        with open(split_dir / "meta.csv", newline="", encoding="utf8") as f:
+            rows = list(csv.DictReader(f, delimiter=";"))
+        assert rows == [row]
 
     assert not videos.exists()

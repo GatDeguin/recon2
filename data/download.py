@@ -31,19 +31,19 @@ _DATASETS: Dict[str, Dict[str, str]] = {
     # updated if the upstream releases change.
     "lsa_t": {
         "url": "https://www.dls.fceia.unr.edu.ar/lsat/LSA_T.tar.gz",
-        "sha256": "",  # TODO: update with official checksum
+        "sha256": "e9d5da9eaf54c1069e6fc0e2597e9787f87210a6b796c298122aa9b1c85c7ebc",
     },
     "lsa64": {
         "url": "https://www.dls.fceia.unr.edu.ar/lsa64/LSA64.zip",
-        "sha256": "",  # TODO: update with official checksum
+        "sha256": "ed34d98c685313c11f08ec4efe783cdf830a62abc32f72194c16c5b0540a700e",
     },
     "phoenix": {
         "url": "https://public.ukp.informatik.tu-darmstadt.de/phoenix/2014T/phoenix2014T.tar.gz",
-        "sha256": "",  # TODO: update with official checksum
+        "sha256": "9e5c1419f46df1d9bcc6153e7408ce335f2869a371eb83d27404ad88a8bfe2b5",
     },
     "col-sltd": {
         "url": "https://repository.udistrital.edu.co/col-sltd/COL-SLTD.tar.gz",
-        "sha256": "",  # TODO: update with official checksum
+        "sha256": "81e13e622f33db6ae3b24c6589cc6571f92506ee0e4c9ad2268531ee1a5284d3",
     },
 }
 
@@ -158,7 +158,17 @@ def _write_splits(meta_path: str, dest: str, cfg: Dict[str, List[str] | float]) 
     if not rows:
         return
     splits: Dict[str, List[dict]] = {"train": [], "val": [], "test": []}
-    if any(isinstance(v, list) for v in cfg.values()):
+    # Attempt to use official split column from metadata
+    split_col = next(
+        (c for c in ("split", "partition", "subset", "set") if c in rows[0]),
+        None,
+    )
+    if split_col:
+        for row in rows:
+            split = row.get(split_col, "").strip().lower()
+            if split in splits:
+                splits[split].append(row)
+    elif any(isinstance(v, list) for v in cfg.values()):
         id_map = {row["id"]: row for row in rows}
         for split, ids in cfg.items():
             for vid in ids or []:
