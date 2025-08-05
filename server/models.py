@@ -123,7 +123,13 @@ def start_grpc_server(port: int = 50051):
 
     class TranscriberService(transcriber_pb2_grpc.TranscriberServicer):
         def Transcribe(self, request, context):
+            max_bytes = int(os.environ.get("MAX_VIDEO_BYTES", str(10 * 1024 * 1024)))
+            if len(request.video) > max_bytes:
+                context.abort(grpc.StatusCode.INVALID_ARGUMENT, "video too large")
             feats = extract_features_from_bytes(request.video)
+            max_seq = int(os.environ.get("MAX_SEQUENCE_LENGTH", "1000"))
+            if feats.shape[2] > max_seq:
+                context.abort(grpc.StatusCode.INVALID_ARGUMENT, "sequence too long")
             if onnx_sess is not None:
                 out = onnx_sess.run(None, {onnx_sess.get_inputs()[0].name: feats.numpy()})[0]
                 logits = torch.from_numpy(out)
