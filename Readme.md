@@ -215,6 +215,12 @@ Para descargar y normalizar automáticamente estos corpora se incluye el script
 python data/download.py <corpus> DEST --username USER --password PASS
 ```
 
+Por ejemplo, para descargar y preparar PHOENIX-Weather-2014T:
+
+```bash
+python data/download.py phoenix datos/phoenix
+```
+
 `<corpus>` puede ser `lsa_t`, `lsa64`, `phoenix` o `col-sltd`. El script
 verifica la suma SHA‑256, muestra una barra de progreso durante la descarga,
 extrae los archivos y coloca los vídeos en `DEST/videos` y las anotaciones en
