@@ -286,15 +286,27 @@ id;domain
 0003;0
 ```
 
+Este CSV puede generarse automáticamente combinando los `meta.csv` de distintos corpus:
+
+```bash
+python scripts/generate_domain_csv.py data/domains.csv data/corpus_a/train data/corpus_b/train
+```
+
+El orden de las rutas define el identificador de dominio asignado (0, 1, 2, ...).
+
 Para entrenar con DANN:
 
 ```bash
 python train.py --h5_file datos.h5 --csv_file labels.csv \
-  --domain_csv data/domain_labels_example.csv --adversarial \
+  --domain_csv data/domains.csv --adversarial \
   --adv_mix_rate 1.0 --adv_weight 0.1 --adv_steps 1
 ```
 
-Los parámetros `--adv_mix_rate` controla la lambda del gradiente invertido, `--adv_weight` pondera la pérdida adversarial y `--adv_steps` define cuántas iteraciones de actualización se realizan sobre el discriminador por batch.
+donde:
+
+* `adv_mix_rate` controla la λ del **Gradient Reversal Layer** (0–1).
+* `adv_weight` pondera la pérdida adversarial frente a la principal.
+* `adv_steps` indica cuántas actualizaciones se aplican al discriminador por mini‑batch.
 
 ---
 
