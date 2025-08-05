@@ -1,9 +1,9 @@
 # Domain-Adversarial Neural Network training example
 
 dataset:
-  h5_file: data/data.h5
-  features_h5: data/features.h5
-  csv_file: data/labels.csv
+  h5_file: data/lsa_t/train.h5
+  features_h5: data/lsa_t/features.h5
+  csv_file: data/lsa_t/labels.csv
   domain_csv: data/domains.csv
   vocab: vocab.txt
 
@@ -15,12 +15,12 @@ model:
   arch: stgcn
 
 hyperparameters:
-  epochs: 10
-  batch_size: 4
+  epochs: 30
+  batch_size: 8
   seq_len: 16
   max_seq_len: 128
-  learning_rate: 0.001
+  learning_rate: 0.0005
   adversarial: true
-  adv_mix_rate: 0.5
+  adv_mix_rate: 1.0
   adv_weight: 0.1
   adv_steps: 1
