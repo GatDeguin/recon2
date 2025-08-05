@@ -12,9 +12,17 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 
+OPENFACE_BIN="$(pwd)/bin/FeatureExtraction"
+if [[ ! -x "$OPENFACE_BIN" ]]; then
+  echo "FeatureExtraction binary not found: $OPENFACE_BIN" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+export OPENFACE_BIN
+
 cat <<EOM
 
 OpenFace built in $(pwd)
-Set the following environment variable:
-  export OPENFACE_BIN=$(pwd)/bin/FeatureExtraction
+Environment variable set:
+  OPENFACE_BIN=$OPENFACE_BIN
 EOM

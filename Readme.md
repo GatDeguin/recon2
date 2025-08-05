@@ -27,12 +27,22 @@ los proyectos [RAFT](https://github.com/princeton-vl/RAFT) y
 En este repositorio se incluyen scripts que automatizan la instalaci\xC3\xB3n:
 
 ```bash
-# Instalar RAFT (optical flow)
-bash scripts/install_raft.sh
+# Instalar y configurar RAFT (flujo \xC3\xB3ptico)
+source scripts/install_raft.sh
 
-# Compilar OpenFace
-bash scripts/install_openface.sh
+# Compilar y configurar OpenFace
+source scripts/install_openface.sh
 ```
+
+Los scripts verifican la presencia de los binarios y exportan las variables de
+entorno necesarias:
+
+- `RAFT_DIR`: directorio local con el c\xC3\xB3digo de RAFT.
+- `RAFT_CHECKPOINT`: ruta al peso `raft-sintel.pth`.
+- `OPENFACE_BIN`: binario `FeatureExtraction` de OpenFace.
+
+Ejecute los comandos anteriores con `source` para que las variables queden
+disponibles en la sesi\xC3\xB3n actual.
 
 Instalaci\xC3\xB3n manual de RAFT (probado con commit `3fa0bb0`):
 
