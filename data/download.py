@@ -121,6 +121,8 @@ def _extract_archive(path: str, dest: str) -> None:
     elif tarfile.is_tarfile(path):
         with tarfile.open(path) as tf:
             tf.extractall(dest)
+    else:
+        raise RuntimeError(f"Unsupported archive format: {path}")
 
 
 def _normalize(dest: str) -> None:

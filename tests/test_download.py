@@ -36,6 +36,14 @@ def test_extract_archive(tmp_path):
     assert (out_dir / "a" / "b.txt").read_text() == "ok"
 
 
+def test_extract_unknown_archive(tmp_path):
+    path = tmp_path / "file.bin"
+    path.write_text("data")
+    out_dir = tmp_path / "out"
+    with pytest.raises(RuntimeError):
+        _extract_archive(str(path), str(out_dir))
+
+
 def test_normalize(tmp_path):
     dest = tmp_path / "data"
     sub = dest / "sub"
