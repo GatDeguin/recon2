@@ -331,6 +331,18 @@ no se proporciona, se utilizará el valor definido en este archivo. Allí se
 especifican las rutas de los datasets, la carpeta de `checkpoints`, la
 arquitectura del modelo y los hiperparámetros más comunes.
 
+Además se incluyen plantillas específicas en `configs/` para distintos
+escenarios:
+
+- `config_distill.yaml`: habilita distillation (`distillation: true`) y
+  requiere un `teacher_ckpt` para entrenar un alumno.
+- `config_contrastive.yaml`: activa la opción `contrastive` para añadir una
+  pérdida contrastiva durante el entrenamiento.
+- `config_vocab_1k.yaml` y `config_vocab_32k.yaml`: ejemplifican cómo fijar
+  `vocab_size` al construir vocabularios pequeños o grandes.
+
+Use la plantilla que se ajuste a su caso como punto de partida.
+
 ---
 
 ## 6. Despliegue y Monitoreo
