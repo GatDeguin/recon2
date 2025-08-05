@@ -9,10 +9,25 @@ cd RAFT
 pip install -r requirements.txt
 bash download_models.sh
 
+RAFT_DIR="$(pwd)"
+RAFT_CHECKPOINT="$RAFT_DIR/models/raft-sintel.pth"
+
+if [[ ! -d "$RAFT_DIR" ]]; then
+  echo "RAFT directory not found: $RAFT_DIR" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+if [[ ! -f "$RAFT_CHECKPOINT" ]]; then
+  echo "Checkpoint not found: $RAFT_CHECKPOINT" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+export RAFT_DIR RAFT_CHECKPOINT
+
 cat <<EOM
 
-RAFT installed in $(pwd)
-Set the following environment variables:
-  export RAFT_DIR=$(pwd)
-  export RAFT_CHECKPOINT=$(pwd)/models/raft-sintel.pth
+RAFT installed in $RAFT_DIR
+Environment variables set:
+  RAFT_DIR=$RAFT_DIR
+  RAFT_CHECKPOINT=$RAFT_CHECKPOINT
 EOM
