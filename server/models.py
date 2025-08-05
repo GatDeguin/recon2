@@ -19,6 +19,10 @@ OPENFACE_BIN = os.environ.get("OPENFACE_BIN")
 os.makedirs("logs/videos", exist_ok=True)
 logger = MetricsLogger(os.path.join("logs", "metrics.db"))
 
+# Validation settings
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_SEQ_LEN = 1000
+
 # Placeholders for models
 mp_holistic = None
 yolox_sess = None
@@ -123,7 +127,20 @@ def start_grpc_server(port: int = 50051):
 
     class TranscriberService(transcriber_pb2_grpc.TranscriberServicer):
         def Transcribe(self, request, context):
-            feats = extract_features_from_bytes(request.video)
+            if len(request.video) > MAX_FILE_SIZE:
+                context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "File too large")
+            try:
+                feats = extract_features_from_bytes(request.video)
+            except Exception:  # pragma: no cover - safety
+                context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                    "Corrupt or unsupported video file",
+                )
+            if feats.shape[2] > MAX_SEQ_LEN:
+                context.abort(
+                    grpc.StatusCode.RESOURCE_EXHAUSTED,
+                    "Video exceeds maximum length",
+                )
             if onnx_sess is not None:
                 out = onnx_sess.run(None, {onnx_sess.get_inputs()[0].name: feats.numpy()})[0]
                 logits = torch.from_numpy(out)
