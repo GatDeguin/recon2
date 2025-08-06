@@ -411,7 +411,21 @@ El backend se implementa con **FastAPI** y gRPC en contenedores Docker orquestad
 
 ### 6.2 Frontend en Tiempo Real
 
-Un cliente React/WebSocket captura la webcam o stream, envía chunks al servidor y superpone landmarks y transcripción en tiempo real para feedback inmediato al usuario .
+Un cliente React/WebSocket captura la webcam o stream, envía chunks al
+servidor y superpone transcripción en tiempo real para feedback inmediato al
+usuario.
+
+Para lanzar la interfaz web de desarrollo utilice:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+El servidor de Vite quedará expuesto en `http://localhost:5173` y se conectará
+al backend de FastAPI disponible en `ws://localhost:8000/ws`. Para generar una
+versión lista para producción ejecute `npm run build`.
 
 ### 6.3 Mantenimiento y Aprendizaje Continuo
 
